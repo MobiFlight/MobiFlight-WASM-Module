@@ -1,0 +1,31 @@
+<AssetPackage Name="mobiflight-event-module" Version="0.2.49">
+	<ItemSettings>
+		<ContentType>MISC</ContentType>
+		<Title>Event Module</Title>
+		<Manufacturer/>
+		<Creator>MobiFlight</Creator>
+	</ItemSettings>
+	<Flags>
+		<VisibleInStore>true</VisibleInStore>
+		<CanBeReferenced>true</CanBeReferenced>
+	</Flags>
+	<AssetGroups>
+		<AssetGroup Name="ContentInfo">
+			<Type>ContentInfo</Type>
+			<Flags>
+				<FSXCompatibility>false</FSXCompatibility>
+			</Flags>
+			<AssetDir>PackageDefinitions\mobiflight-event-module\ContentInfo\</AssetDir>
+			<OutputDir>ContentInfo\mobiflight-event-module\</OutputDir>
+		</AssetGroup>
+		<AssetGroup Name="MobiFlight_Event_Module">
+			<Type>Copy</Type>
+			<Flags>
+				<FSXCompatibility>false</FSXCompatibility>
+			</Flags>
+			<AssetDir>PackageSources\modules\</AssetDir>
+			<OutputDir>modules\</OutputDir>
+		</AssetGroup>
+	</AssetGroups>
+</AssetPackage>
+

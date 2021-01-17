@@ -1,0 +1,8 @@
+<Project Version="2" Name="MobiFlightEventModuleProject" FolderName="Packages">
+	<OutputDirectory>.</OutputDirectory>
+	<TemporaryOutputDirectory>_PackageInt</TemporaryOutputDirectory>
+	<Packages>
+		<Package>PackageDefinitions\mobiflight-event-module.xml</Package>
+	</Packages>
+</Project>
+
