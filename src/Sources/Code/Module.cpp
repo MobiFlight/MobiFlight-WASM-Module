@@ -2,16 +2,14 @@
 #include <MSFS\MSFS_WindowsTypes.h>
 #include <SimConnect.h>
 #include <MSFS\Legacy\gauges.h>
-#include <map>
 #include <vector>
 #include <string>
 #include <iostream>
 #include <fstream>
-
 #include "Module.h"
 
 HANDLE g_hSimConnect;
-const char* version = "0.2.49";
+const char* version = "0.2.50";
 const char* CustomEventPrefix = "MobiFlight.";
 
 std::vector<std::string> Events;
