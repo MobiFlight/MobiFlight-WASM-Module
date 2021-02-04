@@ -9,7 +9,7 @@
 #include "Module.h"
 
 HANDLE g_hSimConnect;
-const char* version = "0.2.50";
+const char* version = "0.2.50			";
 const char* CustomEventPrefix = "MobiFlight.";
 
 std::vector<std::string> Events;

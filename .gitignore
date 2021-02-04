@@ -1,6 +1,7 @@
 # Temp output and build directories
 src/Sources/Code/.vs
 src/Sources/Code/MSFS
+src/_PackageInt
 
 # Log files
 *.log
