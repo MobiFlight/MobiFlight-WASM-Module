@@ -9,7 +9,7 @@
 #include "Module.h"
 
 HANDLE g_hSimConnect;
-const char* version = "0.2.64";
+const char* version = "0.2.65";
 const char* MobiFlightEventPrefix = "MobiFlight.";
 const char* FileEventsMobiFlight = "modules/events.txt";
 const char* FileEventsUser = "modules/events.user.txt";
