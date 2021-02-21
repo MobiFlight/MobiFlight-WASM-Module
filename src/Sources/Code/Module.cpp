@@ -9,10 +9,13 @@
 #include "Module.h"
 
 HANDLE g_hSimConnect;
-const char* version = "0.2.50			";
-const char* CustomEventPrefix = "MobiFlight.";
+const char* version = "0.2.64";
+const char* MobiFlightEventPrefix = "MobiFlight.";
+const char* FileEventsMobiFlight = "modules/events.txt";
+const char* FileEventsUser = "modules/events.user.txt";
 
-std::vector<std::string> Events;
+std::vector<std::pair<std::string, std::string>> CodeEvents;
+
 
 enum MOBIFLIGHT_GROUP
 {
@@ -26,13 +29,43 @@ enum eEvents
 
 void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContext);
 
-void LoadEventDefinitions() {
-	std::ifstream file("modules/events.txt");
+std::pair<std::string, std::string> splitIntoPair(std::string value, char delimiter) {
+	auto index = value.find(delimiter);
+	std::pair<std::string, std::string> result;
+	if (index != std::string::npos) {
+
+		// Split around ':' character
+		result = std::make_pair(
+			value.substr(0, index),
+			value.substr(index + 1)
+		);
+
+		// Trim any leading ' ' in the value part
+		// (you may wish to add further conditions, such as '\t')
+		while (!result.second.empty() && result.second.front() == ' ') {
+			result.second.erase(0, 1);
+		}
+	}
+	else {
+		// Split around ':' character
+		result = std::make_pair(
+			value,
+			std::string("(>H:" + value + ")")
+		);
+	}
+
+	return result;
+}
+
+void LoadEventDefinitions(const char * fileName) {
+	std::ifstream file(fileName);
 	std::string line;
 
 	while (std::getline(file, line)) {
 		if (line.find("//") != std::string::npos) continue;
-		Events.push_back(line);
+
+		std::pair<std::string, std::string> codeEvent = splitIntoPair(line, '#');
+		CodeEvents.push_back(codeEvent);
 	}
 
 	file.close();
@@ -40,18 +73,19 @@ void LoadEventDefinitions() {
 
 void RegisterEvents() {
 	DWORD eventID = 0;
-	for (const auto& value : Events) {
 
-		std::string eventCommand = value;
-		std::string eventName = std::string(CustomEventPrefix) + eventCommand;
+	for (const auto& value : CodeEvents) {
+		std::string eventCommand = value.second;
+		std::string eventName = std::string(MobiFlightEventPrefix) + value.first;
 
 		HRESULT hr = SimConnect_MapClientEventToSimEvent(g_hSimConnect, eventID, eventName.c_str());
 		hr = SimConnect_AddClientEventToNotificationGroup(g_hSimConnect, MOBIFLIGHT_GROUP::DEFAULT, eventID, false);
 
-#if DEBUG
-		if (hr != S_OK) fprintf(stderr, "MobiFlight: Error on registering Event %s with ID %u for command (>H:%s)", eventName.c_str(), eventID, eventCommand.c_str());
-		else fprintf(stderr, "MobiFlight: Success on registering Event %s with ID %u for command (>H:%s)", eventName.c_str(), eventID, eventCommand.c_str());
+#if _DEBUG
+		if (hr != S_OK) fprintf(stderr, "MobiFlight: Error on registering Event %s with ID %u for code %s", eventName.c_str(), eventID, eventCommand.c_str());
+		else fprintf(stderr, "MobiFlight: Success on registering Event %s with ID %u for code %s", eventName.c_str(), eventID, eventCommand.c_str());
 #endif
+
 		eventID++;
 	}
 
@@ -61,7 +95,8 @@ void RegisterEvents() {
 extern "C" MSFS_CALLBACK void module_init(void)
 {
 	// load defintions
-	LoadEventDefinitions();
+	LoadEventDefinitions(FileEventsMobiFlight);
+	LoadEventDefinitions(FileEventsUser);
 	
 	g_hSimConnect = 0;
 	HRESULT hr = SimConnect_Open(&g_hSimConnect, "Standalone Module", (HWND) NULL, 0, 0, 0);
@@ -87,7 +122,7 @@ extern "C" MSFS_CALLBACK void module_init(void)
 	}
 
 	fprintf(stderr, "MobiFlight: Module Init Complete. Version: %s", version);
-	fprintf(stderr, "MobiFlight: Loaded %u event defintions.", Events.size());
+	fprintf(stderr, "MobiFlight: Loaded %u event defintions.", CodeEvents.size());
 }
 
 extern "C" MSFS_CALLBACK void module_deinit(void)
@@ -112,14 +147,16 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
 		SIMCONNECT_RECV_EVENT* evt = (SIMCONNECT_RECV_EVENT*)pData;
 		int eventID = evt->uEventID;
 
-		if (eventID >= Events.size()) {
+		if (eventID < CodeEvents.size()) {
+			// We got a Code Event or a User Code Event
+			 int CodeEventId = eventID;
+			std::string command = std::string(CodeEvents[CodeEventId].second);
+			fprintf(stderr, "execute %s\n", command.c_str());
+			execute_calculator_code(command.c_str(), nullptr, nullptr, nullptr);
+		} 
+		else {
 			fprintf(stderr, "MobiFlight: OOF! - EventID out of range:%u\n", eventID);
-			break;
 		}
-
-		std::string command = std::string("(>H:") + std::string(Events[eventID]) + std::string(")");
-		execute_calculator_code(command.c_str(), nullptr, nullptr, nullptr);
-		fprintf(stderr, "%s\n", command.c_str());
 		
 		break;
 	}

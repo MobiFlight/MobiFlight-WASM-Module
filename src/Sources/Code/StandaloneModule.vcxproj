@@ -78,7 +78,7 @@
     <PostBuildEvent />
     <PostBuildEvent>
       <Command>copy /Y "$(TargetPath)" "$(SolutionDir)..\..\PackageSources\modules"
-copy /Y "$(TargetDir)events.txt" "$(SolutionDir)..\..\PackageSources\modules"</Command>
+copy /Y "$(TargetDir)events*.txt" "$(SolutionDir)..\..\PackageSources\modules"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|MSFS'">
@@ -116,6 +116,9 @@ copy /Y "$(TargetDir)events.txt" "$(SolutionDir)..\..\PackageSources\modules"</C
     <ClInclude Include="Module.h" />
   </ItemGroup>
   <ItemGroup>
+    <Text Include="events.code.txt">
+      <DeploymentContent>true</DeploymentContent>
+    </Text>
     <Text Include="events.txt">
       <DeploymentContent>true</DeploymentContent>
     </Text>
