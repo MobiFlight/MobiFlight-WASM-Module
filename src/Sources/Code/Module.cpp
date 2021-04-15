@@ -9,7 +9,7 @@
 #include "Module.h"
 
 HANDLE g_hSimConnect;
-const char* version = "0.2.65";
+const char* version = "0.2.67";
 const char* MobiFlightEventPrefix = "MobiFlight.";
 const char* FileEventsMobiFlight = "modules/events.txt";
 const char* FileEventsUser = "modules/events.user.txt";
@@ -96,6 +96,7 @@ extern "C" MSFS_CALLBACK void module_init(void)
 {
 	// load defintions
 	LoadEventDefinitions(FileEventsMobiFlight);
+	int eventDefinition = CodeEvents.size();
 	LoadEventDefinitions(FileEventsUser);
 	
 	g_hSimConnect = 0;
@@ -122,7 +123,9 @@ extern "C" MSFS_CALLBACK void module_init(void)
 	}
 
 	fprintf(stderr, "MobiFlight: Module Init Complete. Version: %s", version);
-	fprintf(stderr, "MobiFlight: Loaded %u event defintions.", CodeEvents.size());
+	fprintf(stderr, "MobiFlight: Loaded %u event defintions in total.", CodeEvents.size());
+	fprintf(stderr, "MobiFlight: Loaded %u built-in event defintions.", eventDefinition);
+	fprintf(stderr, "MobiFlight: Loaded %u user event defintions.", CodeEvents.size()-eventDefinition);
 }
 
 extern "C" MSFS_CALLBACK void module_deinit(void)

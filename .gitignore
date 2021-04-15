@@ -2,6 +2,8 @@
 src/Sources/Code/.vs
 src/Sources/Code/MSFS
 src/_PackageInt
+PackageSources/
+Packages/
 
 # Log files
 *.log

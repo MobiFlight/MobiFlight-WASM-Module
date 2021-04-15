@@ -8,6 +8,5 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="events.txt" />
-    <Text Include="events.code.txt" />
   </ItemGroup>
 </Project>
