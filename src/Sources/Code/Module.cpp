@@ -9,16 +9,19 @@
 #include "Module.h"
 
 HANDLE g_hSimConnect;
-const char* version = "0.3.4";
+const char* version = "0.3.5";
 const char* MobiFlightEventPrefix = "MobiFlight.";
 const char* FileEventsMobiFlight = "modules/events.txt";
 const char* FileEventsUser = "modules/events.user.txt";
 std::vector<std::pair<std::string, std::string>> CodeEvents;
 
 const SIMCONNECT_CLIENT_DATA_ID MOBIFLIGHT_CLIENT_DATA_ID = 0;
+const SIMCONNECT_CLIENT_DATA_ID MOBIFLIGHT_COMMAND_CLIENT_DATA_ID = 1;
 
 struct lVar {
 	int ID;
+	int varID;
+	int Offset;
 	std::string Name;
 	float Value;
 };
@@ -100,39 +103,63 @@ void RegisterEvents() {
 	SimConnect_SetNotificationGroupPriority(g_hSimConnect, MOBIFLIGHT_GROUP::DEFAULT, SIMCONNECT_GROUP_PRIORITY_HIGHEST);
 }
 
-void RegisterLVars() {
-	lVar var1; var1.Name = "AIRLINER_V1_SPEED"; var1.ID = register_named_variable(var1.Name.c_str());
-	LVars.push_back(var1);
+void ListLVars() {
+	int lVarId = 0;
 	
+	std::vector<std::string> lVarList;
+	for (int i = 0; i != 1000; i++) {
+		const char * lVarName = get_name_of_named_variable(i);
+		if (lVarName == NULLPTR) break;
+
+		lVarList.push_back(std::string(lVarName));
+	}
+
+	std::sort(lVarList.begin(), lVarList.end());
+
+	for (const auto& lVar : lVarList) {
+		fprintf(stderr, "MobiFlight: Available LVar > %s", lVar.c_str());
+	}
+}
+
+void RegisterLVar(const std::string lVarName) {
+	const int VarOffset = 10;
+	lVar var1; 
+	var1.Name = lVarName; 
+	var1.ID = LVars.size() + VarOffset; 
+	var1.Offset = (var1.ID - VarOffset) * sizeof(float);
+	var1.varID = register_named_variable(lVarName.c_str());
+
 	HRESULT hr = SimConnect_AddToClientDataDefinition(
 		g_hSimConnect,
 		var1.ID,
-		SIMCONNECT_CLIENTDATAOFFSET_AUTO,
+		var1.Offset,
 		sizeof(float),
 		0
 	);
-	
-	lVar var2; var2.Name = "AIRLINER_V2_SPEED"; var2.ID = register_named_variable(var2.Name.c_str());
-	LVars.push_back(var2);
-	
-	hr = SimConnect_AddToClientDataDefinition(
-		g_hSimConnect,
-		var2.ID,
-		SIMCONNECT_CLIENTDATAOFFSET_AUTO,
-		sizeof(float),
-		0
-	);
-	
-	fprintf(stderr, "MobiFlight: Registered LVars");
+
+	LVars.push_back(var1);
+	fprintf(stderr, "MobiFlight: RegisterLVars > %s ID [%u] : Offset(%u) : VarID(%u)", var1.Name.c_str(), var1.ID, var1.Offset, var1.varID);
+}
+
+void ClearLvars() {
+	const int VarOffset = 10;
+	for (auto& value : LVars) {
+		SimConnect_ClearClientDataDefinition(
+			g_hSimConnect,
+			value.varID
+		);
+	}
+	LVars.clear();
+
+	fprintf(stderr, "MobiFlight: Cleared LVAR tracking.");
 }
 
 void ReadLVars() {
 	for (auto& value : LVars) {
-		float val = get_named_variable_value(value.ID);
+		float val = get_named_variable_value(value.varID);
 		if (value.Value == val) continue;
 
 		value.Value = val;
-		
 		
 		SimConnect_SetClientData(
 			g_hSimConnect,
@@ -140,12 +167,10 @@ void ReadLVars() {
 			value.ID,
 			SIMCONNECT_CLIENT_DATA_SET_FLAG_DEFAULT,
 			0,
-			sizeof(float),
+			sizeof(value.Value),
 			&value.Value
 		);
-		
 
-		
 		fprintf(stderr, "MobiFlight: LVar %s with ID %u has value %f", value.Name.c_str(), value.ID, value.Value);
 	}
 }
@@ -157,6 +182,29 @@ void RegisterClientDataArea() {
 		return;
 	}
 	SimConnect_CreateClientData(g_hSimConnect, MOBIFLIGHT_CLIENT_DATA_ID, 1024, SIMCONNECT_CREATE_CLIENT_DATA_FLAG_DEFAULT);
+
+	hr = SimConnect_MapClientDataNameToID(g_hSimConnect, "MobiFlightCommand", MOBIFLIGHT_COMMAND_CLIENT_DATA_ID);
+	if (hr != S_OK) {
+		fprintf(stderr, "MobiFlight: Error on creating Client Data Area. %u", hr);
+		return;
+	}
+	SimConnect_CreateClientData(g_hSimConnect, MOBIFLIGHT_COMMAND_CLIENT_DATA_ID, 256, SIMCONNECT_CREATE_CLIENT_DATA_FLAG_DEFAULT);
+	hr = SimConnect_AddToClientDataDefinition(
+		g_hSimConnect,
+		0,
+		0,
+		256,
+		0
+	);
+	SimConnect_RequestClientData(g_hSimConnect,
+		MOBIFLIGHT_COMMAND_CLIENT_DATA_ID,
+		0,
+		0,
+		SIMCONNECT_CLIENT_DATA_PERIOD_ON_SET,
+		SIMCONNECT_CLIENT_DATA_REQUEST_FLAG_CHANGED,
+		0,
+		0,
+		0);
 }
 
 extern "C" MSFS_CALLBACK void module_init(void)
@@ -184,7 +232,7 @@ extern "C" MSFS_CALLBACK void module_init(void)
 	hr = SimConnect_SubscribeToSystemEvent(g_hSimConnect, EVENT_FRAME, "Frame");
 	if (hr != S_OK)
 	{
-		fprintf(stderr, "Could not subscribe to \"6Hz\" system event.\n");
+		fprintf(stderr, "Could not subscribe to \"Frame\" system event.\n");
 		return;
 	}
 
@@ -197,7 +245,6 @@ extern "C" MSFS_CALLBACK void module_init(void)
 
 	RegisterClientDataArea();
 	RegisterEvents();
-	RegisterLVars();
 	fprintf(stderr, "MobiFlight: Module Init Complete. Version: %s", version);
 	fprintf(stderr, "MobiFlight: Loaded %u event defintions in total.", CodeEvents.size());
 	fprintf(stderr, "MobiFlight: Loaded %u built-in event defintions.", eventDefinition);
@@ -225,6 +272,36 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
 		case SIMCONNECT_RECV_ID_EVENT_FILENAME: {
 			SIMCONNECT_RECV_EVENT_FILENAME* evt = (SIMCONNECT_RECV_EVENT_FILENAME*)pData;
 			int eventID = evt->uEventID;
+
+			
+			break;
+		}
+
+		case SIMCONNECT_RECV_ID_CLIENT_DATA: {
+			auto recv_data = static_cast<SIMCONNECT_RECV_CLIENT_DATA*>(pData);
+			std::string str = std::string((char*)(&recv_data->dwData));
+			fprintf(stderr, "MobiFlight: Received Command: %s\n", str.c_str());
+
+
+			if (str == "MF.LVars.Clear") {
+				ClearLvars();
+				break;
+
+			} else if (str == "MF.LVars.List") {
+				ListLVars();
+				break;
+
+			}
+
+			std::shared_ptr<std::string> m_str = std::make_shared<std::string>(str);
+			
+			if (m_str.get()->find("MF.LVars.Add.") != std::string::npos) {
+				str = m_str.get()->substr(std::string("MF.LVars.Add.").length());
+				RegisterLVar(str);
+
+				fprintf(stderr, "MobiFlight: Received LVar to register: %s.\n", str.c_str());
+				return;
+			}
 
 			
 			break;
