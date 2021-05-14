@@ -9,14 +9,18 @@
 #include "Module.h"
 
 HANDLE g_hSimConnect;
-const char* version = "0.3.5";
+const char* version = "0.3.10";
 const char* MobiFlightEventPrefix = "MobiFlight.";
 const char* FileEventsMobiFlight = "modules/events.txt";
 const char* FileEventsUser = "modules/events.user.txt";
 std::vector<std::pair<std::string, std::string>> CodeEvents;
 
-const SIMCONNECT_CLIENT_DATA_ID MOBIFLIGHT_CLIENT_DATA_ID = 0;
-const SIMCONNECT_CLIENT_DATA_ID MOBIFLIGHT_COMMAND_CLIENT_DATA_ID = 1;
+const SIMCONNECT_CLIENT_DATA_ID MOBIFLIGHT_CLIENT_DATA_ID_LVAR = 0;
+const SIMCONNECT_CLIENT_DATA_ID MOBIFLIGHT_CLIENT_DATA_ID_COMMAND = 1;
+const SIMCONNECT_CLIENT_DATA_ID MOBIFLIGHT_CLIENT_DATA_ID_RESPONSE = 2;
+
+const SIMCONNECT_CLIENT_DATA_DEFINITION_ID MOBIFLIGHT_DATA_DEFINITION_ID_STRING_RESPONSE = 0;
+const SIMCONNECT_CLIENT_DATA_DEFINITION_ID MOBIFLIGHT_DATA_DEFINITION_ID_STRING_COMMAND = 1;
 
 struct lVar {
 	int ID;
@@ -26,6 +30,10 @@ struct lVar {
 	float Value;
 };
 std::vector<lVar> LVars;
+
+struct StringValue {
+	char value[255];
+};
 
 enum MOBIFLIGHT_GROUP
 {
@@ -105,6 +113,7 @@ void RegisterEvents() {
 
 void ListLVars() {
 	int lVarId = 0;
+
 	
 	std::vector<std::string> lVarList;
 	for (int i = 0; i != 1000; i++) {
@@ -116,8 +125,23 @@ void ListLVars() {
 
 	std::sort(lVarList.begin(), lVarList.end());
 
+
 	for (const auto& lVar : lVarList) {
-		fprintf(stderr, "MobiFlight: Available LVar > %s", lVar.c_str());
+		StringValue * buffer = new StringValue;
+		strcpy(buffer->value, lVar.c_str());
+		
+		SimConnect_SetClientData(
+			g_hSimConnect,
+			MOBIFLIGHT_CLIENT_DATA_ID_RESPONSE,
+			MOBIFLIGHT_DATA_DEFINITION_ID_STRING_RESPONSE,
+			SIMCONNECT_CLIENT_DATA_SET_FLAG_DEFAULT,
+			0,
+			255,
+			&buffer->value
+		);
+#if _DEBUG		
+		fprintf(stderr, "MobiFlight: Available LVar > %s", buffer->value);
+#endif
 	}
 }
 
@@ -138,15 +162,40 @@ void RegisterLVar(const std::string lVarName) {
 	);
 
 	LVars.push_back(var1);
+
+	float val = get_named_variable_value(var1.varID);
+
+	SimConnect_SetClientData(
+		g_hSimConnect,
+		MOBIFLIGHT_CLIENT_DATA_ID_LVAR,
+		var1.ID,
+		SIMCONNECT_CLIENT_DATA_SET_FLAG_DEFAULT,
+		0,
+		sizeof(var1.Value),
+		&var1.Value
+	);
+
+	var1.Value = val;
+
+	SimConnect_SetClientData(
+		g_hSimConnect,
+		MOBIFLIGHT_CLIENT_DATA_ID_LVAR,
+		var1.ID,
+		SIMCONNECT_CLIENT_DATA_SET_FLAG_DEFAULT,
+		0,
+		sizeof(var1.Value),
+		&var1.Value
+	);
+#if _DEBUG
 	fprintf(stderr, "MobiFlight: RegisterLVars > %s ID [%u] : Offset(%u) : VarID(%u)", var1.Name.c_str(), var1.ID, var1.Offset, var1.varID);
+#endif
 }
 
 void ClearLvars() {
-	const int VarOffset = 10;
 	for (auto& value : LVars) {
 		SimConnect_ClearClientDataDefinition(
 			g_hSimConnect,
-			value.varID
+			value.ID
 		);
 	}
 	LVars.clear();
@@ -163,43 +212,61 @@ void ReadLVars() {
 		
 		SimConnect_SetClientData(
 			g_hSimConnect,
-			MOBIFLIGHT_CLIENT_DATA_ID,
+			MOBIFLIGHT_CLIENT_DATA_ID_LVAR,
 			value.ID,
 			SIMCONNECT_CLIENT_DATA_SET_FLAG_DEFAULT,
 			0,
 			sizeof(value.Value),
 			&value.Value
 		);
-
+#if _DEBUG
 		fprintf(stderr, "MobiFlight: LVar %s with ID %u has value %f", value.Name.c_str(), value.ID, value.Value);
+#endif
 	}
 }
 
 void RegisterClientDataArea() {
-	HRESULT hr = SimConnect_MapClientDataNameToID(g_hSimConnect, "MobiFlight", MOBIFLIGHT_CLIENT_DATA_ID);
+	HRESULT hr = SimConnect_MapClientDataNameToID(g_hSimConnect, "MobiFlight.LVars", MOBIFLIGHT_CLIENT_DATA_ID_LVAR);
 	if (hr != S_OK) {
 		fprintf(stderr, "MobiFlight: Error on creating Client Data Area. %u", hr);
 		return;
 	}
-	SimConnect_CreateClientData(g_hSimConnect, MOBIFLIGHT_CLIENT_DATA_ID, 1024, SIMCONNECT_CREATE_CLIENT_DATA_FLAG_DEFAULT);
+	SimConnect_CreateClientData(g_hSimConnect, MOBIFLIGHT_CLIENT_DATA_ID_LVAR, 1024, SIMCONNECT_CREATE_CLIENT_DATA_FLAG_DEFAULT);
 
-	hr = SimConnect_MapClientDataNameToID(g_hSimConnect, "MobiFlightCommand", MOBIFLIGHT_COMMAND_CLIENT_DATA_ID);
+	hr = SimConnect_MapClientDataNameToID(g_hSimConnect, "MobiFlight.Response", MOBIFLIGHT_CLIENT_DATA_ID_RESPONSE);
 	if (hr != S_OK) {
 		fprintf(stderr, "MobiFlight: Error on creating Client Data Area. %u", hr);
 		return;
 	}
-	SimConnect_CreateClientData(g_hSimConnect, MOBIFLIGHT_COMMAND_CLIENT_DATA_ID, 256, SIMCONNECT_CREATE_CLIENT_DATA_FLAG_DEFAULT);
+	SimConnect_CreateClientData(g_hSimConnect, MOBIFLIGHT_CLIENT_DATA_ID_RESPONSE, 256, SIMCONNECT_CREATE_CLIENT_DATA_FLAG_DEFAULT);
+
+	hr = SimConnect_MapClientDataNameToID(g_hSimConnect, "MobiFlight.Command", MOBIFLIGHT_CLIENT_DATA_ID_COMMAND);
+	if (hr != S_OK) {
+		fprintf(stderr, "MobiFlight: Error on creating Client Data Area. %u", hr);
+		return;
+	}
+	SimConnect_CreateClientData(g_hSimConnect, MOBIFLIGHT_CLIENT_DATA_ID_COMMAND, 256, SIMCONNECT_CREATE_CLIENT_DATA_FLAG_DEFAULT);
+
 	hr = SimConnect_AddToClientDataDefinition(
 		g_hSimConnect,
-		0,
+		MOBIFLIGHT_DATA_DEFINITION_ID_STRING_RESPONSE,
 		0,
 		256,
 		0
 	);
+
+	hr = SimConnect_AddToClientDataDefinition(
+		g_hSimConnect,
+		MOBIFLIGHT_DATA_DEFINITION_ID_STRING_COMMAND,
+		0,
+		256,
+		0
+	);
+
 	SimConnect_RequestClientData(g_hSimConnect,
-		MOBIFLIGHT_COMMAND_CLIENT_DATA_ID,
+		MOBIFLIGHT_CLIENT_DATA_ID_COMMAND,
 		0,
-		0,
+		MOBIFLIGHT_DATA_DEFINITION_ID_STRING_COMMAND,
 		SIMCONNECT_CLIENT_DATA_PERIOD_ON_SET,
 		SIMCONNECT_CLIENT_DATA_REQUEST_FLAG_CHANGED,
 		0,
