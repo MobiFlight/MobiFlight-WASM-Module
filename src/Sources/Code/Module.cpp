@@ -23,11 +23,15 @@ const SIMCONNECT_CLIENT_DATA_ID MOBIFLIGHT_CLIENT_DATA_ID_RESPONSE = 2;
 const SIMCONNECT_CLIENT_DATA_DEFINITION_ID MOBIFLIGHT_DATA_DEFINITION_ID_STRING_RESPONSE = 0;
 const SIMCONNECT_CLIENT_DATA_DEFINITION_ID MOBIFLIGHT_DATA_DEFINITION_ID_STRING_COMMAND = 1;
 
+// This is required to be able to re-use already defined data definition IDs & request IDs
+// after resetting registered SimVars 
 uint16_t MaxClientDataDefinition = 0;
 
-//uint32_t SimVarIdCounter = 1;
+// This is an offset for the dynamically registered SimVars 
+// to avoid any conflicts with base IDs
 uint16_t SimVarOffset = 1000;
 
+// data struct for dynamically registered SimVars
 struct SimVar {
 	int ID;
 	int Offset;
@@ -35,17 +39,24 @@ struct SimVar {
 	float Value;
 };
 
+// The list of dynamically registered SimVars
 std::vector<SimVar> SimVars;
 
+// The list of currently available LVars
+std::vector<std::string> lVarList;
+
+// Data struct to read messages coming from clients
 struct StringValue {
 	char value[255];
 };
 
+// Enum for notification groups
 enum MOBIFLIGHT_GROUP
 {
 	DEFAULT
 };
 
+// Enum for SimConnect Event Types that we are registering for
 enum eEvents
 {
 	EVENT_FLIGHT_LOADED,
@@ -54,6 +65,8 @@ enum eEvents
 
 void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContext);
 
+// Helper method to split up the lines from config file
+// into Pairs
 std::pair<std::string, std::string> splitIntoPair(std::string value, char delimiter) {
 	auto index = value.find(delimiter);
 	std::pair<std::string, std::string> result;
@@ -82,6 +95,9 @@ std::pair<std::string, std::string> splitIntoPair(std::string value, char delimi
 	return result;
 }
 
+// Read the event defitinions from file
+// Providing a file with these definitions allows legacy SimConnect clients
+// to trigger MobiFlight events transparently
 void LoadEventDefinitions(const char * fileName) {
 	std::ifstream file(fileName);
 	std::string line;
@@ -96,6 +112,7 @@ void LoadEventDefinitions(const char * fileName) {
 	file.close();
 }
 
+// Register all Events with SimConnect that have been defined
 void RegisterEvents() {
 	DWORD eventID = 0;
 
@@ -117,10 +134,13 @@ void RegisterEvents() {
 	SimConnect_SetNotificationGroupPriority(g_hSimConnect, MOBIFLIGHT_GROUP::DEFAULT, SIMCONNECT_GROUP_PRIORITY_HIGHEST);
 }
 
+
+// List all available LVars for the currently loaded flight
+// and send them to the SimConnect client
 void ListLVars() {
 	int lVarId = 0;
+	lVarList.clear();
 
-	std::vector<std::string> lVarList;
 	for (int i = 0; i != 1000; i++) {
 		const char * lVarName = get_name_of_named_variable(i);
 		if (lVarName == NULLPTR) break;
@@ -131,22 +151,38 @@ void ListLVars() {
 	std::sort(lVarList.begin(), lVarList.end());
 
 	for (const auto& lVar : lVarList) {
-		StringValue buffer;
-		strcpy(&buffer.value[0], lVar.c_str());
-		
 		SimConnect_SetClientData(
 			g_hSimConnect,
 			MOBIFLIGHT_CLIENT_DATA_ID_RESPONSE,
 			MOBIFLIGHT_DATA_DEFINITION_ID_STRING_RESPONSE,
 			SIMCONNECT_CLIENT_DATA_SET_FLAG_DEFAULT,
 			0,
-			sizeof(StringValue),
-			&buffer.value[0]
+			256,
+			(void *)lVar.c_str()
 		);
-		fprintf(stderr, "MobiFlight: Available LVar > %s", buffer.value);
+		fprintf(stderr, "MobiFlight: Available LVar > %s", lVar.c_str());
 	}
 }
 
+void WriteSimVar(SimVar& simVar) {
+	HRESULT hr = SimConnect_SetClientData(
+		g_hSimConnect,
+		MOBIFLIGHT_CLIENT_DATA_ID_SIMVAR,
+		simVar.ID,
+		SIMCONNECT_CLIENT_DATA_SET_FLAG_DEFAULT,
+		0,
+		sizeof(simVar.Value),
+		&simVar.Value
+	);
+	if (hr != S_OK) {
+		fprintf(stderr, "MobiFlight: Error on Setting Client Data. %u, SimVar: %s (ID: %u)", hr, simVar.Name.c_str(), simVar.ID);
+	}
+#if _DEBUG
+	fprintf(stderr, "MobiFlight: SimVar %s with ID %u has value %f", simVar.Name.c_str(), simVar.ID, simVar.Value);
+#endif
+}
+
+// Register a single SimVar and send the current value to SimConnect Clients 
 void RegisterSimVar(const std::string code) {
 	SimVar var1;
 	var1.Name = code;
@@ -170,84 +206,48 @@ void RegisterSimVar(const std::string code) {
 	}
 
 	FLOAT64 val;
+	WriteSimVar(var1);
+
 	execute_calculator_code(std::string(code).c_str(), &val, NULL, NULL);
-
-	hr = SimConnect_SetClientData(
-		g_hSimConnect,
-		MOBIFLIGHT_CLIENT_DATA_ID_SIMVAR,
-		var1.ID,
-		SIMCONNECT_CLIENT_DATA_SET_FLAG_DEFAULT,
-		0,
-		sizeof(var1.Value),
-		&var1.Value
-	);
-	if (hr != S_OK) {
-		fprintf(stderr, "MobiFlight: Error on Setting Client Data. %u, SimVar: %s (ID: %u)", hr, var1.Name.c_str(), var1.ID);
-	}
-
 	var1.Value = val;
-
-	hr = SimConnect_SetClientData(
-		g_hSimConnect,
-		MOBIFLIGHT_CLIENT_DATA_ID_SIMVAR,
-		var1.ID,
-		SIMCONNECT_CLIENT_DATA_SET_FLAG_DEFAULT,
-		0,
-		sizeof(var1.Value),
-		&var1.Value
-	);
-
-	if (hr != S_OK) {
-		fprintf(stderr, "MobiFlight: Error on Setting Client Data. %u, SimVar: %s (ID: %u)", hr, var1.Name.c_str(), var1.ID);
-	}
+	
+	WriteSimVar(var1);
 
 	fprintf(stderr, "MobiFlight: RegisterSimVar > %s ID [%u] : Offset(%u) : Value(%f)", var1.Name.c_str(), var1.ID, var1.Offset, var1.Value);
 }
 
+// Clear the list of currently tracked SimVars
 void ClearSimVars() {
-	/*
-	for (auto& value : SimVars) {
-		HRESULT hr = SimConnect_ClearClientDataDefinition(
-			g_hSimConnect,
-			value.ID
-		);
-		if (hr != S_OK) {
-			fprintf(stderr, "MobiFlight: Error on Clearing Client Data Definition. %u, SimVar: %s (ID: %u)", hr, value.Name.c_str(), value.ID);
-		}
-	}
-	*/
 	SimVars.clear();
-
 	fprintf(stderr, "MobiFlight: Cleared SimVar tracking.");
 }
 
+// Read a single SimVar and send the current value to SimConnect Clients
 void ReadSimVar(SimVar &simVar) {
 	FLOAT64 val = 0;
 	execute_calculator_code(std::string(simVar.Name).c_str(), &val, NULL, NULL);
+	
 	if (simVar.Value == val) return;
-
 	simVar.Value = val;
 
-	SimConnect_SetClientData(
-		g_hSimConnect,
-		MOBIFLIGHT_CLIENT_DATA_ID_SIMVAR,
-		simVar.ID,
-		SIMCONNECT_CLIENT_DATA_SET_FLAG_DEFAULT,
-		0,
-		sizeof(simVar.Value),
-		&simVar.Value
-	);
+	WriteSimVar(simVar);
+
 #if _DEBUG
 	fprintf(stderr, "MobiFlight: SimVar %s with ID %u has value %f", simVar.Name.c_str(), simVar.ID, simVar.Value);
 #endif
 }
 
+// Read all dynamically registered SimVars
 void ReadSimVars() {
 	for (auto& value : SimVars) {
 		ReadSimVar(value);
 	}
 }
 
+// Basic initialization of all required data areas
+// "MobiFlight.LVars" -> All LVars are updated here, and all variables are floats
+// "MobiFlight.Response" -> All responses are provided back to clients, the data is string with max length 255
+// "MobiFlight.Command" -> SimConnect clients can send Commands via this data area
 void RegisterClientDataArea() {
 	HRESULT hr = SimConnect_MapClientDataNameToID(g_hSimConnect, "MobiFlight.LVars", MOBIFLIGHT_CLIENT_DATA_ID_SIMVAR);
 	if (hr != S_OK) {
