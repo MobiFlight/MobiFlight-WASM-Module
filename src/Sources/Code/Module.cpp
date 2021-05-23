@@ -9,7 +9,7 @@
 #include "Module.h"
 
 HANDLE g_hSimConnect;
-const char* version = "0.3.11";
+const char* version = "0.3.20";
 const char* MobiFlightEventPrefix = "MobiFlight.";
 const char* FileEventsMobiFlight = "modules/events.txt";
 const char* FileEventsUser = "modules/events.user.txt";
@@ -134,7 +134,17 @@ void RegisterEvents() {
 	SimConnect_SetNotificationGroupPriority(g_hSimConnect, MOBIFLIGHT_GROUP::DEFAULT, SIMCONNECT_GROUP_PRIORITY_HIGHEST);
 }
 
-
+void SendResponse(const char * message) {
+	SimConnect_SetClientData(
+		g_hSimConnect,
+		MOBIFLIGHT_CLIENT_DATA_ID_RESPONSE,
+		MOBIFLIGHT_DATA_DEFINITION_ID_STRING_RESPONSE,
+		SIMCONNECT_CLIENT_DATA_SET_FLAG_DEFAULT,
+		0,
+		256,
+		(void*) message
+	);
+}
 // List all available LVars for the currently loaded flight
 // and send them to the SimConnect client
 void ListLVars() {
@@ -151,15 +161,7 @@ void ListLVars() {
 	std::sort(lVarList.begin(), lVarList.end());
 
 	for (const auto& lVar : lVarList) {
-		SimConnect_SetClientData(
-			g_hSimConnect,
-			MOBIFLIGHT_CLIENT_DATA_ID_RESPONSE,
-			MOBIFLIGHT_DATA_DEFINITION_ID_STRING_RESPONSE,
-			SIMCONNECT_CLIENT_DATA_SET_FLAG_DEFAULT,
-			0,
-			256,
-			(void *)lVar.c_str()
-		);
+		SendResponse(lVar.c_str());
 		fprintf(stderr, "MobiFlight: Available LVar > %s", lVar.c_str());
 	}
 }
@@ -379,7 +381,9 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
 				break;
 
 			} else if (str == "MF.LVars.List") {
+				SendResponse("MF.LVars.List.Start");
 				ListLVars();
+				SendResponse("MF.LVars.List.End");
 				break;
 
 			}
