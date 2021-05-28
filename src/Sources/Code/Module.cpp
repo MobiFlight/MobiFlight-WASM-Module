@@ -9,7 +9,7 @@
 #include "Module.h"
 
 HANDLE g_hSimConnect;
-const char* version = "0.3.20";
+const char* version = "0.3.22";
 const char* MobiFlightEventPrefix = "MobiFlight.";
 const char* FileEventsMobiFlight = "modules/events.txt";
 const char* FileEventsUser = "modules/events.user.txt";
@@ -19,6 +19,10 @@ std::vector<std::pair<std::string, std::string>> CodeEvents;
 const SIMCONNECT_CLIENT_DATA_ID MOBIFLIGHT_CLIENT_DATA_ID_SIMVAR = 0;
 const SIMCONNECT_CLIENT_DATA_ID MOBIFLIGHT_CLIENT_DATA_ID_COMMAND = 1;
 const SIMCONNECT_CLIENT_DATA_ID MOBIFLIGHT_CLIENT_DATA_ID_RESPONSE = 2;
+
+const char* MOBIFLIGHT_CLIENT_DATA_NAME_SIMVAR = "MobiFlight.LVars";
+const char* MOBIFLIGHT_CLIENT_DATA_NAME_COMMAND = "MobiFlight.Response";
+const char* MOBIFLIGHT_CLIENT_DATA_NAME_RESPONSE = "MobiFlight.Command";
 
 const SIMCONNECT_CLIENT_DATA_DEFINITION_ID MOBIFLIGHT_DATA_DEFINITION_ID_STRING_RESPONSE = 0;
 const SIMCONNECT_CLIENT_DATA_DEFINITION_ID MOBIFLIGHT_DATA_DEFINITION_ID_STRING_COMMAND = 1;
@@ -162,7 +166,9 @@ void ListLVars() {
 
 	for (const auto& lVar : lVarList) {
 		SendResponse(lVar.c_str());
+#if _DEBUG
 		fprintf(stderr, "MobiFlight: Available LVar > %s", lVar.c_str());
+#endif
 	}
 }
 
@@ -251,21 +257,21 @@ void ReadSimVars() {
 // "MobiFlight.Response" -> All responses are provided back to clients, the data is string with max length 255
 // "MobiFlight.Command" -> SimConnect clients can send Commands via this data area
 void RegisterClientDataArea() {
-	HRESULT hr = SimConnect_MapClientDataNameToID(g_hSimConnect, "MobiFlight.LVars", MOBIFLIGHT_CLIENT_DATA_ID_SIMVAR);
+	HRESULT hr = SimConnect_MapClientDataNameToID(g_hSimConnect, MOBIFLIGHT_CLIENT_DATA_NAME_SIMVAR, MOBIFLIGHT_CLIENT_DATA_ID_SIMVAR);
 	if (hr != S_OK) {
 		fprintf(stderr, "MobiFlight: Error on creating Client Data Area. %u", hr);
 		return;
 	}
 	SimConnect_CreateClientData(g_hSimConnect, MOBIFLIGHT_CLIENT_DATA_ID_SIMVAR, 4096, SIMCONNECT_CREATE_CLIENT_DATA_FLAG_DEFAULT);
 
-	hr = SimConnect_MapClientDataNameToID(g_hSimConnect, "MobiFlight.Response", MOBIFLIGHT_CLIENT_DATA_ID_RESPONSE);
+	hr = SimConnect_MapClientDataNameToID(g_hSimConnect, MOBIFLIGHT_CLIENT_DATA_NAME_RESPONSE, MOBIFLIGHT_CLIENT_DATA_ID_RESPONSE);
 	if (hr != S_OK) {
 		fprintf(stderr, "MobiFlight: Error on creating Client Data Area. %u", hr);
 		return;
 	}
 	SimConnect_CreateClientData(g_hSimConnect, MOBIFLIGHT_CLIENT_DATA_ID_RESPONSE, 256, SIMCONNECT_CREATE_CLIENT_DATA_FLAG_DEFAULT);
 
-	hr = SimConnect_MapClientDataNameToID(g_hSimConnect, "MobiFlight.Command", MOBIFLIGHT_CLIENT_DATA_ID_COMMAND);
+	hr = SimConnect_MapClientDataNameToID(g_hSimConnect, MOBIFLIGHT_CLIENT_DATA_NAME_COMMAND, MOBIFLIGHT_CLIENT_DATA_ID_COMMAND);
 	if (hr != S_OK) {
 		fprintf(stderr, "MobiFlight: Error on creating Client Data Area. %u", hr);
 		return;
