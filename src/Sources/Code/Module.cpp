@@ -9,7 +9,7 @@
 #include "Module.h"
 
 HANDLE g_hSimConnect;
-const char* version = "0.3.22";
+const char* version = "0.3.33";
 const char* MobiFlightEventPrefix = "MobiFlight.";
 const char* FileEventsMobiFlight = "modules/events.txt";
 const char* FileEventsUser = "modules/events.user.txt";
@@ -21,8 +21,8 @@ const SIMCONNECT_CLIENT_DATA_ID MOBIFLIGHT_CLIENT_DATA_ID_COMMAND = 1;
 const SIMCONNECT_CLIENT_DATA_ID MOBIFLIGHT_CLIENT_DATA_ID_RESPONSE = 2;
 
 const char* MOBIFLIGHT_CLIENT_DATA_NAME_SIMVAR = "MobiFlight.LVars";
-const char* MOBIFLIGHT_CLIENT_DATA_NAME_COMMAND = "MobiFlight.Response";
-const char* MOBIFLIGHT_CLIENT_DATA_NAME_RESPONSE = "MobiFlight.Command";
+const char* MOBIFLIGHT_CLIENT_DATA_NAME_COMMAND = "MobiFlight.Command";
+const char* MOBIFLIGHT_CLIENT_DATA_NAME_RESPONSE = "MobiFlight.Response";
 
 const SIMCONNECT_CLIENT_DATA_DEFINITION_ID MOBIFLIGHT_DATA_DEFINITION_ID_STRING_RESPONSE = 0;
 const SIMCONNECT_CLIENT_DATA_DEFINITION_ID MOBIFLIGHT_DATA_DEFINITION_ID_STRING_COMMAND = 1;
