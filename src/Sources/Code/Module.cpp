@@ -9,7 +9,7 @@
 #include "Module.h"
 
 HANDLE g_hSimConnect;
-const char* version = "0.3.33";
+const char* version = "0.3.44";
 const char* MobiFlightEventPrefix = "MobiFlight.";
 const char* FileEventsMobiFlight = "modules/events.txt";
 const char* FileEventsUser = "modules/events.user.txt";
@@ -379,8 +379,9 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
 		case SIMCONNECT_RECV_ID_CLIENT_DATA: {
 			auto recv_data = static_cast<SIMCONNECT_RECV_CLIENT_DATA*>(pData);
 			std::string str = std::string((char*)(&recv_data->dwData));
+#if _DEBUG
 			fprintf(stderr, "MobiFlight: Received Command: %s\n", str.c_str());
-
+#endif
 
 			if (str == "MF.SimVars.Clear") {
 				ClearSimVars();
@@ -392,6 +393,13 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
 				SendResponse("MF.LVars.List.End");
 				break;
 
+			}
+			// MF.SimVars.Set(5 (>L:MyVar))
+			else if (str.find("MF.SimVars.Set.") != std::string::npos) {
+				std::string prefix = "MF.SimVars.Set.";
+				str = str.substr(prefix.length());
+				execute_calculator_code(str.c_str(), nullptr, nullptr, nullptr);
+				break;
 			}
 
 			std::shared_ptr<std::string> m_str = std::make_shared<std::string>(str);
