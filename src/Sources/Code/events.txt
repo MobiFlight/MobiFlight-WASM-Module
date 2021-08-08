@@ -1755,3 +1755,16 @@ B747_8_BTN_ARPT#(>H:B747_8_MFD_BTN_ARPT) (>H:B747_8_PFD_BTN_ARPT) and
 B747_8_BTN_DATA#(>H:B747_8_MFD_BTN_DATA) (>H:B747_8_PFD_BTN_DATA) and
 B747_8_BTN_POS#(>H:B747_8_MFD_BTN_POS) (>H:B747_8_PFD_BTN_POS) and
 B747_8_BTN_TERR#(>H:B747_8_MFD_BTN_TERR) (>H:B747_8_PFD_BTN_TERR) and
+// AS3X Touch
+AS3X_Touch_1_Knob_Inner_L_INC#(>H:AS3X_Touch_1_Knob_Inner_L_INC)
+AS3X_Touch_1_Knob_Inner_L_DEC#(>H:AS3X_Touch_1_Knob_Inner_L_DEC)
+AS3X_Touch_1_Knob_Inner_R_INC#(>H:AS3X_Touch_1_Knob_Inner_R_INC)
+AS3X_Touch_1_Knob_Inner_R_DEC#(>H:AS3X_Touch_1_Knob_Inner_R_DEC)
+AS3X_Touch_1_Knob_Outer_L_INC#(>H:AS3X_Touch_1_Knob_Outer_L_INC)
+AS3X_Touch_1_Knob_Outer_L_DEC#(>H:AS3X_Touch_1_Knob_Outer_L_DEC)
+AS3X_Touch_1_Knob_Outer_R_INC#(>H:AS3X_Touch_1_Knob_Outer_R_INC)
+AS3X_Touch_1_Knob_Outer_R_DEC#(>H:AS3X_Touch_1_Knob_Outer_R_DEC)
+AS3X_Touch_1_NRST_Push#(>H:AS3X_Touch_1_NRST_Push)
+AS3X_Touch_1_DirectTo_Push#(>H:AS3X_Touch_1_DirectTo_Push)
+AS3X_Touch_1_Menu_Push#(>H:AS3X_Touch_1_Menu_Push)
+AS3X_Touch_1_Back_Push#(>H:AS3X_Touch_1_Back_Push)
