@@ -517,7 +517,7 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
 				std::string prefix = "MF.SimVars.Add.";
 				str = m_str.get()->substr(prefix.length());
 				RegisterSimVar(str, client);
-				fprintf(stderr, "MobiFlight[%s]: Received SimVar to register: %s.\n", str.c_str());
+				fprintf(stderr, "MobiFlight[%s]: Received SimVar to register: %s.\n", client->Name.c_str(), str.c_str());
 				break;
 			}
 
