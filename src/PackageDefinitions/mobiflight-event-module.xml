@@ -1,4 +1,4 @@
-<AssetPackage Name="mobiflight-event-module" Version="0.3.33">
+<AssetPackage Name="mobiflight-event-module" Version="0.4.0">
 	<ItemSettings>
 		<ContentType>MISC</ContentType>
 		<Title>Event Module</Title>
@@ -15,7 +15,7 @@
 			<Flags>
 				<FSXCompatibility>false</FSXCompatibility>
 			</Flags>
-			<AssetDir>PackageDefinitions\mobiflight-event-module\ContentInfo</AssetDir>
+			<AssetDir>PackageDefinitions\mobiflight-event-module\ContentInfo\</AssetDir>
 			<OutputDir>ContentInfo\mobiflight-event-module\</OutputDir>
 		</AssetGroup>
 		<AssetGroup Name="MobiFlight_Event_Module">
