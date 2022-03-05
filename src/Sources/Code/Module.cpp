@@ -165,7 +165,6 @@ void LoadEventDefinitions() {
 	fprintf(stderr, "MobiFlight: Loaded %u event defintions in total.", CodeEvents.size());
 	fprintf(stderr, "MobiFlight: Loaded %u built-in event defintions.", eventDefinition);
 	fprintf(stderr, "MobiFlight: Loaded %u user event defintions.", CodeEvents.size() - eventDefinition);
-
 }
 
 void SendResponse(const char * message, Client* client) {
@@ -180,12 +179,10 @@ void SendResponse(const char * message, Client* client) {
 	);
 }
 
-// Sends information about new client data areas as json string.
-// e.g. {"Name": "ClientName", "SimVars": 3, "Command": 4, "Response": 5}
+// Sends information that new client data areas are created.
 void SendNewClientResponse(Client* client, Client* nc) {
 	std::ostringstream oss;
-	oss << "{\"Name\": \"" << nc->Name << "\", \"SimVars\": "  << nc->DataAreaIDSimvar;
-	oss << ", \"Command\": " << nc->DataAreaIDCommand << ", \"Response\": " << nc->DataAreaIDResponse << "}";
+	oss << "MF.Clients.Add." << nc->Name << ".Finished";
 	std::string data = oss.str();
 	fprintf(stderr, "MobiFlight[%s]: SendNewClientData > %s", client->Name.c_str(), data.c_str());
 	SendResponse(data.c_str(), client);
@@ -374,8 +371,8 @@ Client* RegisterNewClient(const std::string clientName) {
 		newClient->Name = clientName;
 		newClient->ID = RegisteredClients.size();
 		newClient->DataAreaIDSimvar = 3 * newClient->ID;
-		newClient->DataAreaIDResponse = newClient->DataAreaIDSimvar + 1;
-		newClient->DataAreaIDCommand = newClient->DataAreaIDResponse + 1;
+		newClient->DataAreaIDCommand = newClient->DataAreaIDSimvar + 1;
+		newClient->DataAreaIDResponse = newClient->DataAreaIDCommand + 1;
 		newClient->DataAreaNameSimVar = newClient->Name + std::string(CLIENT_DATA_NAME_POSTFIX_SIMVAR);
 		newClient->DataAreaNameResponse = newClient->Name + std::string(CLIENT_DATA_NAME_POSTFIX_RESPONSE);
 		newClient->DataAreaNameCommand = newClient->Name + std::string(CLIENT_DATA_NAME_POSTFIX_COMMAND);
