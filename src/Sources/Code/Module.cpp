@@ -3,6 +3,7 @@
 #include <SimConnect.h>
 #include <MSFS\Legacy\gauges.h>
 #include <vector>
+#include <list>
 #include <string>
 #include <sstream>
 #include <iostream>
@@ -53,11 +54,14 @@ struct Client {
 	SIMCONNECT_CLIENT_DATA_ID DataAreaIDCommand;
 	SIMCONNECT_CLIENT_DATA_DEFINITION_ID DataDefinitionIDStringResponse;
 	SIMCONNECT_CLIENT_DATA_DEFINITION_ID DataDefinitionIDStringCommand;
-	std::vector<SimVar> SimVars;
+	std::list<SimVar> SimVars;
 	SIMCONNECT_CLIENT_DATA_DEFINITION_ID DataDefinitionIdSimVarsStart;
 	// This is an optimization to be able to re-use already defined data definition IDs & request IDs
 	// after resetting registered SimVars 
 	uint16_t MaxClientDataDefinition = 0;
+	// Runtime Rolling CLient Data reading Index
+	std::list<SimVar>::iterator RollingClientDataReadIndex;
+	
 };
 
 // The list of currently registered clients
@@ -230,7 +234,7 @@ void WriteSimVar(SimVar& simVar, Client* client) {
 
 // Register a single SimVar and send the current value to SimConnect Clients 
 void RegisterSimVar(const std::string code, Client* client) {
-	std::vector<SimVar>* SimVars = &(client->SimVars);
+	std::list<SimVar>* SimVars = &(client->SimVars);
 	SimVar var1;
 	var1.Name = code;
 	var1.ID = SimVars->size() + client->DataDefinitionIdSimVarsStart;
@@ -250,6 +254,7 @@ void RegisterSimVar(const std::string code, Client* client) {
 		);
 
 		client->MaxClientDataDefinition = SimVars->size();
+		client->RollingClientDataReadIndex = SimVars->begin();
 	}
 #if _DEBUG
 	fprintf(stderr, "MobiFlight[%s]: RegisterSimVar SimVars Size: %d\n", client->Name.c_str(), SimVars->size());
@@ -272,6 +277,7 @@ void RegisterSimVar(const std::string code, Client* client) {
 void ClearSimVars(Client* client) {
 	client->SimVars.clear();
 	fprintf(stderr, "MobiFlight: Cleared SimVar tracking.");
+	client->RollingClientDataReadIndex = client->SimVars.begin();
 }
 
 // Read a single SimVar and send the current value to SimConnect Clients
@@ -292,9 +298,15 @@ void ReadSimVar(SimVar &simVar, Client* client) {
 // Read all dynamically registered SimVars
 void ReadSimVars() {
 	for (auto& client : RegisteredClients) {
-		std::vector<SimVar>* SimVars = &(client->SimVars);
-		for (auto& value : *SimVars) {
-			ReadSimVar(value, client);
+		std::list<SimVar>* SimVars = &(client->SimVars);
+		//circular list, Max 5 SimVars at once
+		for (int i=0; i < 5; ++i) {
+			std:advance(client->RollingClientDataReadIndex, 1);
+			if(client->RollingClientDataReadIndex == SimVars->end()){
+				client->RollingClientDataReadIndex = SimVars->begin();
+			}
+			
+			ReadSimVar(*(client->RollingClientDataReadIndex), client);
 		}
 	}
 }
@@ -378,7 +390,7 @@ Client* RegisterNewClient(const std::string clientName) {
 		newClient->DataAreaNameCommand = newClient->Name + std::string(CLIENT_DATA_NAME_POSTFIX_COMMAND);
 		newClient->DataDefinitionIDStringResponse = 2 * newClient->ID; // 500 Clients possible until offset 1000 is reached
 		newClient->DataDefinitionIDStringCommand = newClient->DataDefinitionIDStringResponse + 1;
-		newClient->SimVars = std::vector<SimVar>();
+		newClient->SimVars = std::list<SimVar>();
 		newClient->DataDefinitionIdSimVarsStart = SimVarOffset + (newClient->ID * ClientDataDefinitionIdSimVarsRange);
 
 		RegisteredClients.push_back(newClient);
