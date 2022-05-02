@@ -277,6 +277,7 @@ void RegisterSimVar(const std::string code, Client* client) {
 void ClearSimVars(Client* client) {
 	client->SimVars.clear();
 	fprintf(stderr, "MobiFlight: Cleared SimVar tracking.");
+	client->RollingClientDataReadIndex = client->SimVars.begin();
 }
 
 // Read a single SimVar and send the current value to SimConnect Clients
