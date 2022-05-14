@@ -299,8 +299,8 @@ void ReadSimVar(SimVar &simVar, Client* client) {
 void ReadSimVars() {
 	for (auto& client : RegisteredClients) {
 		std::list<SimVar>* SimVars = &(client->SimVars);
-		//circular list, Max 5 SimVars at once
-		for (int i=0; i < 5; ++i) {
+		//circular list, Max 12 SimVars at once
+		for (int i=0; i < 12; ++i) {
 			std:advance(client->RollingClientDataReadIndex, 1);
 			if(client->RollingClientDataReadIndex == SimVars->end()){
 				client->RollingClientDataReadIndex = SimVars->begin();
