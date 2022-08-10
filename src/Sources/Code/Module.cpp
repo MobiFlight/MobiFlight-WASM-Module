@@ -26,7 +26,6 @@ const char* CLIENT_DATA_NAME_POSTFIX_COMMAND = ".Command";
 const char* CLIENT_DATA_NAME_POSTFIX_RESPONSE = ".Response";
 
 const int MOBIFLIGHT_MESSAGE_SIZE = 1024;
-const int MOBIFLIGHT_MAX_VARS_PER_FRAME_DEFAULT = 30;
 
 // This is an offset for the dynamically registered SimVars 
 // to avoid any conflicts with base IDs
@@ -35,7 +34,9 @@ uint16_t SimVarOffset = 1000;
 // For each registered client can 10000 data definition ids are reserved
 uint16_t ClientDataDefinitionIdSimVarsRange = 10000;
 
-uint16_t MOBIFLIGHT_MAX_VARS_PER_FRAME = MOBIFLIGHT_MAX_VARS_PER_FRAME_DEFAULT;
+// Maximum number of variables that are read from sim per frame, Default: 30
+// Can be set to different value via config command
+uint16_t MOBIFLIGHT_MAX_VARS_PER_FRAME = 30;
 
 // data struct for dynamically registered SimVars
 struct SimVar {
