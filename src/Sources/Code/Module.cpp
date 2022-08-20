@@ -3,6 +3,7 @@
 #include <SimConnect.h>
 #include <MSFS\Legacy\gauges.h>
 #include <vector>
+#include <list>
 #include <string>
 #include <sstream>
 #include <iostream>
@@ -10,7 +11,7 @@
 #include "Module.h"
 
 HANDLE g_hSimConnect;
-const char* version = "0.5.0";
+const char* version = "0.6.0";
 
 const char* ClientName = "MobiFlightWasmModule";
 const char* MobiFlightEventPrefix = "MobiFlight.";
@@ -32,6 +33,10 @@ uint16_t SimVarOffset = 1000;
 
 // For each registered client can 10000 data definition ids are reserved
 uint16_t ClientDataDefinitionIdSimVarsRange = 10000;
+
+// Maximum number of variables that are read from sim per frame, Default: 30
+// Can be set to different value via config command
+uint16_t MOBIFLIGHT_MAX_VARS_PER_FRAME = 30;
 
 // data struct for dynamically registered SimVars
 struct SimVar {
@@ -58,6 +63,10 @@ struct Client {
 	// This is an optimization to be able to re-use already defined data definition IDs & request IDs
 	// after resetting registered SimVars 
 	uint16_t MaxClientDataDefinition = 0;
+	// Runtime Rolling CLient Data reading Index
+	//std::vector<SimVar>::iterator RollingClientDataReadIndex;
+	uint16_t RollingClientDataReadIndex;
+	
 };
 
 // The list of currently registered clients
@@ -272,6 +281,8 @@ void RegisterSimVar(const std::string code, Client* client) {
 void ClearSimVars(Client* client) {
 	client->SimVars.clear();
 	fprintf(stderr, "MobiFlight: Cleared SimVar tracking.");
+	//client->RollingClientDataReadIndex = client->SimVars.begin();
+	client->RollingClientDataReadIndex = 0;
 }
 
 // Read a single SimVar and send the current value to SimConnect Clients
@@ -293,8 +304,14 @@ void ReadSimVar(SimVar &simVar, Client* client) {
 void ReadSimVars() {
 	for (auto& client : RegisteredClients) {
 		std::vector<SimVar>* SimVars = &(client->SimVars);
-		for (auto& value : *SimVars) {
-			ReadSimVar(value, client);
+		
+		int maxVarsPerFrame = SimVars->size() < MOBIFLIGHT_MAX_VARS_PER_FRAME ? SimVars->size() : MOBIFLIGHT_MAX_VARS_PER_FRAME;
+		
+		for (int i=0; i < maxVarsPerFrame; ++i) {
+			ReadSimVar(SimVars->at(client->RollingClientDataReadIndex), client);
+			client->RollingClientDataReadIndex++;
+			if (client->RollingClientDataReadIndex >= SimVars->size())
+				client->RollingClientDataReadIndex = 0;
 		}
 	}
 }
@@ -379,6 +396,8 @@ Client* RegisterNewClient(const std::string clientName) {
 		newClient->DataDefinitionIDStringResponse = 2 * newClient->ID; // 500 Clients possible until offset 1000 is reached
 		newClient->DataDefinitionIDStringCommand = newClient->DataDefinitionIDStringResponse + 1;
 		newClient->SimVars = std::vector<SimVar>();
+		//newClient->RollingClientDataReadIndex = newClient->SimVars.begin();
+		newClient->RollingClientDataReadIndex = 0;
 		newClient->DataDefinitionIdSimVarsStart = SimVarOffset + (newClient->ID * ClientDataDefinitionIdSimVarsRange);
 
 		RegisteredClients.push_back(newClient);
@@ -524,6 +543,14 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
 				Client* newClient = RegisterNewClient(str);
 				SendNewClientResponse(client, newClient);
 				fprintf(stderr, "MobiFlight: Received Client to register: %s.\n", str.c_str());
+			}
+
+			if (m_str.get()->find("MF.Config.MAX_VARS_PER_FRAME.Set.") != std::string::npos) {
+				std::string prefix = "MF.Config.MAX_VARS_PER_FRAME.Set.";
+				str = m_str.get()->substr(prefix.length());
+				uint16_t value = static_cast<uint16_t>(std::stoi(str));
+				MOBIFLIGHT_MAX_VARS_PER_FRAME = value;
+				fprintf(stderr, "MobiFlight: Set MF.Config.MAX_VARS_PER_FRAME to %u.\n", value);
 			}
 			break;
 		}
