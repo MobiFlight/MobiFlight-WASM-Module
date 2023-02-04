@@ -29,6 +29,9 @@ The default channels for the MobiFlight client are auto created on startup. Each
 |```MF.SimVars.Clear``` |||
 |```MF.SimVars.Set(5 (>L:MyVar))```|||
 |```MF.Clients.Add.ClientName```|```MF.Clients.Add.ClientName.Finished```||
+|```MF.Config.MAX_VARS_PER_FRAME.Set.30```|||
+|```MF.Version.Get```|```MF.Version.0.6.0```||
+
 
 **MF.SimVars.Add.**
 The "SimVars.Add." command needs to be extended with a gauge calculator scipt for reading a variable, like shown in the table. Each added variable needs 4 reserved bytes to return its float value in the LVars channel. The bytes are  allocated in the order of the LVars being added. The first variable starts at offset 0, the second at offset 4, the third at offset 8 and so on. To access each value, the external SimConnect clients needs a unique DataDefinitionId for each memory segment. It is recommended to start with ID 1000. 
