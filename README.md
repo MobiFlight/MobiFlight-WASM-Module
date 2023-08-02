@@ -27,7 +27,7 @@ The default channels for the MobiFlight client are auto created on startup. Each
 | ```MF.LVars.List``` | ```MF.LVars.List.Start``` <br> ```A32NX_AUTOPILOT_1_ACTIVE``` <br> ```A32NX_AUTOPILOT_HEADING_SELECTED``` <br> ```...``` <br> ```MF.LVars.List.End```|
 | ```MF.SimVars.Add.(A:GROUND ALTITUDE,Meters)``` || ```1455.23``` |
 |```MF.SimVars.Clear``` |||
-|```MF.SimVars.Set(5 (>L:MyVar))```|||
+|```MF.SimVars.Set.5 (>L:MyVar)```|||
 |```MF.Clients.Add.ClientName```|```MF.Clients.Add.ClientName.Finished```||
 |```MF.Config.MAX_VARS_PER_FRAME.Set.30```|||
 |```MF.Version.Get```|```MF.Version.0.6.0```||
