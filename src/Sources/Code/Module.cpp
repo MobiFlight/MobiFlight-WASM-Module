@@ -28,29 +28,35 @@ const char* CLIENT_DATA_NAME_POSTFIX_RESPONSE = ".Response";
 
 const int MOBIFLIGHT_MESSAGE_SIZE = 1024;
 
-// This is an offset for the dynamically registered SimVars 
+// This is an offset for the dynamically registered SimVars
 // to avoid any conflicts with base IDs
-uint16_t SimVarOffset = 1000;
+constexpr uint16_t SIMVAR_OFFSET = 1000;
 
 // For each registered client can 10000 data definition ids are reserved
-uint16_t ClientDataDefinitionIdSimVarsRange = 10000;
-uint16_t ClientDataDefinitionIdStringVarsRange = 10000;
+constexpr uint16_t CLIENT_DATA_DEF_ID_SIMVAR_RANGE = 10000;
+constexpr uint16_t CLIENT_DATA_DEF_ID_STRINGVAR_RANGE = 10000;
 
 // Maximum number of variables that are read from sim per frame, Default: 30
 // Can be set to different value via config command
 uint16_t MOBIFLIGHT_MAX_VARS_PER_FRAME = 30;
 
-constexpr uint8_t MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN = 128;
+// Max length of a string variable. This will affect the maximum amount of string variables
+// due to the maximum client-data-array-size (SIMCONNECT_CLIENTDATA_MAX_SIZE) of 8kB!
+constexpr uint16_t MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN = 128;
 
 // data struct for dynamically registered SimVars
 struct SimVar {
 	int ID;
-	int StringID;
 	int Offset;
-	int StringOffset;
 	std::string Name;
 	float Value;
-	std::string StringValue;
+};
+
+struct StringSimVar {
+	int ID;
+	int Offset;
+	std::string Name;
+	std::string Value;
 };
 
 // data struct for client accessing SimVars
@@ -64,20 +70,21 @@ struct Client {
 	SIMCONNECT_CLIENT_DATA_ID DataAreaIDSimvar;
 	SIMCONNECT_CLIENT_DATA_ID DataAreaIDResponse;
 	SIMCONNECT_CLIENT_DATA_ID DataAreaIDCommand;
-	SIMCONNECT_CLIENT_DATA_ID DataAreaIDStringvar;
+	SIMCONNECT_CLIENT_DATA_ID DataAreaIDStringSimVar;
 	SIMCONNECT_CLIENT_DATA_DEFINITION_ID DataDefinitionIDStringResponse;
 	SIMCONNECT_CLIENT_DATA_DEFINITION_ID DataDefinitionIDStringCommand;
 	std::vector<SimVar> SimVars;
-	
+	std::vector<StringSimVar> StringSimVars;
+
 	SIMCONNECT_CLIENT_DATA_DEFINITION_ID DataDefinitionIdSimVarsStart;
 	SIMCONNECT_CLIENT_DATA_DEFINITION_ID DataDefinitionIdStringVarsStart;
 	// This is an optimization to be able to re-use already defined data definition IDs & request IDs
-	// after resetting registered SimVars 
+	// after resetting registered SimVars
 	uint16_t MaxClientDataDefinition = 0;
 	// Runtime Rolling CLient Data reading Index
 	//std::vector<SimVar>::iterator RollingClientDataReadIndex;
 	uint16_t RollingClientDataReadIndex;
-	
+
 };
 
 // The list of currently registered clients
@@ -165,12 +172,12 @@ void RegisterEvents() {
 		hr = SimConnect_AddClientEventToNotificationGroup(g_hSimConnect, MOBIFLIGHT_GROUP::DEFAULT, eventID, false);
 
 #if _DEBUG
-		if (hr != S_OK) {			
-			fprintf(stderr, "MobiFlight: Error on registering Event %s with ID %u for code %s", eventName.c_str(), eventID, eventCommand.c_str());
+		if (hr != S_OK) {
+			fprintf(stderr, "MobiFlight: Error on registering Event %s with ID %lu for code %s", eventName.c_str(), eventID, eventCommand.c_str());
 		}
 		else {
 			std::cout << "MobiFlight: Success on registering Event " << eventName.c_str();
-			std::cout << " with ID " << eventID << " for code " << eventCommand.c_str() << std::endl;			
+			std::cout << " with ID " << eventID << " for code " << eventCommand.c_str() << std::endl;
 		}
 #endif
 
@@ -217,11 +224,12 @@ void SendNewClientResponse(Client* client, Client* nc) {
 // and send them to the SimConnect client
 void ListLVars(Client* client) {
 	int lVarId = 0;
+	(void)lVarId;
 	lVarList.clear();
 
 	for (int i = 0; i != 1000; i++) {
 		const char * lVarName = get_name_of_named_variable(i);
-		if (lVarName == NULLPTR) break;		
+		if (lVarName == NULLPTR) break;
 		lVarList.push_back(std::string(lVarName));
 	}
 
@@ -235,6 +243,29 @@ void ListLVars(Client* client) {
 	}
 }
 
+// Overloaded write function for string SimVars
+void WriteSimVar(StringSimVar& simVar, Client* client)
+{
+	HRESULT hr = SimConnect_SetClientData(
+		g_hSimConnect,
+		client->DataAreaIDStringSimVar,
+		simVar.ID,
+		SIMCONNECT_CLIENT_DATA_SET_FLAG_DEFAULT,
+		0,
+		MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN,
+		(void*)simVar.Value.c_str()
+	);
+
+	if (hr != S_OK) {
+		fprintf(stderr, "MobiFlight[%s]: Error on Setting String Client Data. %lu, SimVar: %s (String-ID: %ul)\n", client->Name.c_str(), hr, simVar.Name.c_str(), simVar.ID);
+	}
+#if _DEBUG
+	std::cout << "MobiFlight[" << client->Name.c_str() << "]: Written String-SimVar " << simVar.Name.c_str();
+	std::cout << " with String-ID " << simVar.ID << " has value " << simVar.Value.c_str() << std::endl;
+#endif
+}
+
+// Overloaded write function for float SimVars
 void WriteSimVar(SimVar& simVar, Client* client) {
 	HRESULT hr = SimConnect_SetClientData(
 		g_hSimConnect,
@@ -246,119 +277,146 @@ void WriteSimVar(SimVar& simVar, Client* client) {
 		&simVar.Value
 	);
 
-	if (hr != S_OK) {
-		fprintf(stderr, "MobiFlight[%s]: Error on Setting Client Data. %u, SimVar: %s (ID: %u)", client->Name.c_str(), hr, simVar.Name.c_str(), simVar.ID);
-	}
+		if (hr != S_OK) {
+			fprintf(stderr, "MobiFlight[%s]: Error on Setting Client Data. %lu, SimVar: %s (ID: %u)", client->Name.c_str(), hr, simVar.Name.c_str(), simVar.ID);
+		}
 #if _DEBUG
-	std::cout << "MobiFlight[" << client->Name.c_str() << "]: SimVar " << simVar.Name.c_str();
+	std::cout << "MobiFlight[" << client->Name.c_str() << "]: Written SimVar " << simVar.Name.c_str();
 	std::cout << " with ID " << simVar.ID << " has value " << simVar.Value << std::endl;
-#endif
-
-	hr = SimConnect_SetClientData(
-		g_hSimConnect,
-		client->DataAreaIDStringvar,
-		simVar.StringID,
-		SIMCONNECT_CLIENT_DATA_SET_FLAG_DEFAULT,
-		0,
-		MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN,
-		&simVar.StringValue
-	);
-
-	if (hr != S_OK) {
-		fprintf(stderr, "MobiFlight[%s]: Error on Setting Client Data. %u, SimVar: %s (ID: %u)", client->Name.c_str(), hr, simVar.Name.c_str(), simVar.ID);
-	}
-#if _DEBUG
-	fprintf(stderr, "MobiFlight[%s]: SimVar %s with ID %u has value %s", client->Name.c_str(), simVar.Name.c_str(), simVar.ID, simVar.StringValue.c_str());
 #endif
 }
 
-// Register a single SimVar and send the current value to SimConnect Clients 
-void RegisterSimVar(const std::string code, Client* client) {
+// Register a single SimVar and send the current value to SimConnect Clients
+void RegisterSimVar(const std::string code, Client* client, const bool isString) {
 	std::vector<SimVar>* SimVars = &(client->SimVars);
-	SimVar var1;
-	var1.Name = code;
-	var1.ID = SimVars->size() + client->DataDefinitionIdSimVarsStart;
-	var1.StringID = SimVars->size() + client->DataDefinitionIdStringVarsStart;
-	var1.Offset = (SimVars->size()) * (sizeof(float));
-	var1.StringOffset = (SimVars->size()) * MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN;
-
-	SimVars->push_back(var1);
+	std::vector<StringSimVar>* StringSimVars = &(client->StringSimVars);
+	SimVar newSimVar;
+	StringSimVar newStringSimVar;
 	HRESULT hr;
 
-	if (client->MaxClientDataDefinition < SimVars->size())
-	{
-		hr = SimConnect_AddToClientDataDefinition(
-			g_hSimConnect,
-			var1.ID,
-			var1.Offset,
-			sizeof(float),
-			0
-		);
 
-		hr = SimConnect_AddToClientDataDefinition(
-			g_hSimConnect,
-			var1.StringID,
-			var1.StringOffset,
-			MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN,
-			0
-		);
-
-		client->MaxClientDataDefinition = SimVars->size();
+	if(isString) {
+		newStringSimVar.Name = code;
+		newStringSimVar.ID = StringSimVars->size() + client->DataDefinitionIdStringVarsStart;
+		newStringSimVar.Offset = StringSimVars->size() * MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN;
+		newStringSimVar.Value.empty();
+		StringSimVars->push_back(newStringSimVar);
+	} else {
+		newSimVar.Name = code;
+		newSimVar.ID = SimVars->size() + client->DataDefinitionIdSimVarsStart;
+		newSimVar.Offset = SimVars->size() * (sizeof(float));
+		newSimVar.Value = 0.0F;
+		SimVars->push_back(newSimVar);
 	}
+
+
+	if (client->MaxClientDataDefinition < (SimVars->size() + StringSimVars->size())) {
+		if(isString) {
+			hr = SimConnect_AddToClientDataDefinition(
+				g_hSimConnect,
+				newStringSimVar.ID,
+				newStringSimVar.Offset,
+				MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN,
+				0
+			);
+
+			if (hr != S_OK) {
+				fprintf(stderr, "MobiFlight[%s]: Error on adding Client Data \"%s\" with String-ID: %u, String-Offset: %u and Size: %u\n", client->Name.c_str(), newStringSimVar.Name.c_str(), newStringSimVar.ID, newStringSimVar.Offset, MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN);
+			}
 #if _DEBUG
-	std::cout << "MobiFlight[" << client->Name.c_str() << "]: RegisterSimVar SimVars Size: " << SimVars->size() << std::endl;
+			else {
+				std::cout << "MobiFlight[" << client->Name.c_str() << "]: Added String-SimVar > " << newStringSimVar.Name.c_str();
+				std::cout << " with String-ID: " << newStringSimVar.ID << ", String-Offset: " << newStringSimVar.Offset << " and Size: " << MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN << std::endl;
+			}
+			std::cout << "MobiFlight[" << client->Name.c_str() << "]: RegisterSimVar StringSimVars Size: " << StringSimVars->size() << std::endl;
 #endif
+		}
+		else {
+			hr = SimConnect_AddToClientDataDefinition(
+				g_hSimConnect,
+				newSimVar.ID,
+				newSimVar.Offset,
+				sizeof(float),
+				0
+			);
 
-	FLOAT64 val;
-	SINT32 ival = 0;
-	PCSTRINGZ cval = nullptr;
-
-	WriteSimVar(var1, client);
-
-	execute_calculator_code(std::string(code).c_str(), &val, &ival, &cval);
-
-	std::string res = std::string(cval, strnlen(cval, MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN));
-
-	var1.Value = val;
-	var1.StringValue = res;
-	
-	WriteSimVar(var1, client);
-
+			if (hr != S_OK) {
+				fprintf(stderr, "MobiFlight[%s]: Error on adding Client Data \"%s\" with ID: %u, Offset: %u and Size: %lu\n", client->Name.c_str(), newSimVar.Name.c_str(), newSimVar.ID, newSimVar.Offset, sizeof(float));
+			}
 #if _DEBUG
-	std::cout << "MobiFlight[" << client->Name.c_str() << "]: RegisterSimVar > " << var1.Name.c_str();
-	std::cout << " ID [" << var1.ID << "] : Offset(" << var1.Offset << ") : Value(" << var1.Value << ", " << ival << ", " << var1.StringValue << ")"  << std::endl;
+			else {
+				std::cout << "MobiFlight[" << client->Name.c_str() << "]: Added SimVar > " << newSimVar.Name.c_str();
+				std::cout << " with ID: " << newSimVar.ID << ", Offset: " << newSimVar.Offset << " and Size: " << sizeof(float) << std::endl;
+			}
+			std::cout << "MobiFlight[" << client->Name.c_str() << "]: RegisterSimVar SimVars Size: " << SimVars->size() << std::endl;
 #endif
+		}
+		client->MaxClientDataDefinition = (SimVars->size() + StringSimVars->size());
+	}
+
+
+	if(isString) {
+		PCSTRINGZ charVal = nullptr;
+		WriteSimVar(newStringSimVar, client);
+		execute_calculator_code(std::string(code).c_str(), nullptr, nullptr, &charVal);
+		newStringSimVar.Value = std::string(charVal, strnlen(charVal, MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN));
+		WriteSimVar(newStringSimVar, client);
+#if _DEBUG
+		std::cout << "MobiFlight[" << client->Name.c_str() << "]: RegisterStringSimVar > " << newStringSimVar.Name.c_str();
+		std::cout << " ID [" << newStringSimVar.ID << "] : Offset(" << newStringSimVar.Offset << ") : Value(" << newStringSimVar.Value << ")"  << std::endl;
+#endif
+	} else {
+		FLOAT64 floatVal = 0;
+		WriteSimVar(newSimVar, client);
+		execute_calculator_code(std::string(code).c_str(), &floatVal, nullptr, nullptr);
+		newSimVar.Value = floatVal;
+		WriteSimVar(newSimVar, client);
+#if _DEBUG
+		std::cout << "MobiFlight[" << client->Name.c_str() << "]: RegisterSimVar > " << newSimVar.Name.c_str();
+		std::cout << " ID [" << newSimVar.ID << "] : Offset(" << newSimVar.Offset << ") : Value(" << newSimVar.Value << ")"  << std::endl;
+#endif
+	}
 }
 
 // Clear the list of currently tracked SimVars
 void ClearSimVars(Client* client) {
-	client->SimVars.clear();	
+	client->SimVars.clear();
+	client->StringSimVars.clear();
 	std::cout << "MobiFlight[" << client->Name.c_str() << "]: Cleared SimVar tracking." << std::endl;
 	//client->RollingClientDataReadIndex = client->SimVars.begin();
 	client->RollingClientDataReadIndex = 0;
 }
 
-//0.000000, 0, @)
-
-// Read a single SimVar and send the current value to SimConnect Clients
+// Read a single SimVar and send the current value to SimConnect Clients (overloaded for float SimVars)
 void ReadSimVar(SimVar &simVar, Client* client) {
-	FLOAT64 val = 0;
-	SINT32 ival = 0;
-	PCSTRINGZ cval = nullptr;
+	FLOAT64 floatVal = 0;
 
-	execute_calculator_code(std::string(simVar.Name).c_str(), &val, &ival, &cval);
+	execute_calculator_code(std::string(simVar.Name).c_str(), &floatVal, nullptr, nullptr);
 
-	std::string res = std::string(cval, strnlen(cval, MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN));
-	
-	if (simVar.Value == val) return;
-	simVar.Value = val;
-	simVar.StringValue = res;
+	if (simVar.Value == floatVal) return;
+	simVar.Value = floatVal;
 
 	WriteSimVar(simVar, client);
 
 #if _DEBUG
 	std::cout << "MobiFlight[" << client->Name.c_str() << "]: SimVar " << simVar.Name.c_str();
-	std::cout << " with ID " << simVar.ID << " has value " << simVar.Value << ", " << ival << ", " << simVar.StringValue.c_str() << ")"  << std::endl;
+	std::cout << " with ID " << simVar.ID << " has value " << simVar.Value << std::endl;
+#endif
+}
+
+// Read a single SimVar and send the current value to SimConnect Clients (overloaded for string SimVars)
+void ReadSimVar(StringSimVar &simVar, Client* client) {
+	PCSTRINGZ charVal = nullptr;
+
+	execute_calculator_code(std::string(simVar.Name).c_str(), nullptr, nullptr, &charVal);
+	std::string stringVal = std::string(charVal, strnlen(charVal, MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN));
+	if (simVar.Value == stringVal) return;
+	simVar.Value = stringVal;
+
+	WriteSimVar(simVar, client);
+
+#if _DEBUG
+	std::cout << "MobiFlight[" << client->Name.c_str() << "]: StringSimVar " << simVar.Name.c_str();
 	std::cout << " with ID " << simVar.ID << " has value " << simVar.Value << std::endl;
 #endif
 }
@@ -367,13 +425,20 @@ void ReadSimVar(SimVar &simVar, Client* client) {
 void ReadSimVars() {
 	for (auto& client : RegisteredClients) {
 		std::vector<SimVar>* SimVars = &(client->SimVars);
-		
-		int maxVarsPerFrame = SimVars->size() < MOBIFLIGHT_MAX_VARS_PER_FRAME ? SimVars->size() : MOBIFLIGHT_MAX_VARS_PER_FRAME;
-		
+		std::vector<StringSimVar>* StringSimVars = &(client->StringSimVars);
+
+		int totalSimVars = SimVars->size() + StringSimVars->size();
+		int maxVarsPerFrame = (totalSimVars < MOBIFLIGHT_MAX_VARS_PER_FRAME) ? totalSimVars : MOBIFLIGHT_MAX_VARS_PER_FRAME;
+
 		for (int i=0; i < maxVarsPerFrame; ++i) {
-			ReadSimVar(SimVars->at(client->RollingClientDataReadIndex), client);
+			if(client->RollingClientDataReadIndex < SimVars->size() ) {
+				ReadSimVar(SimVars->at(client->RollingClientDataReadIndex), client);
+			}
+			else {
+				ReadSimVar(StringSimVars->at(client->RollingClientDataReadIndex - SimVars->size()), client);
+			}
 			client->RollingClientDataReadIndex++;
-			if (client->RollingClientDataReadIndex >= SimVars->size())
+			if (client->RollingClientDataReadIndex >= totalSimVars)
 				client->RollingClientDataReadIndex = 0;
 		}
 	}
@@ -386,31 +451,31 @@ void ReadSimVars() {
 void RegisterClientDataArea(Client* client) {
 	HRESULT hr = SimConnect_MapClientDataNameToID(g_hSimConnect, client->DataAreaNameSimVar.c_str(), client->DataAreaIDSimvar);
 	if (hr != S_OK) {
-		fprintf(stderr, "MobiFlight: Error on creating Client Data Area. %u", hr);
+		fprintf(stderr, "MobiFlight: Error on creating Client Data Area. %lu", hr);
 		return;
 	}
 	SimConnect_CreateClientData(g_hSimConnect, client->DataAreaIDSimvar, 4096, SIMCONNECT_CREATE_CLIENT_DATA_FLAG_DEFAULT);
 
 	hr = SimConnect_MapClientDataNameToID(g_hSimConnect, client->DataAreaNameResponse.c_str(), client->DataAreaIDResponse);
 	if (hr != S_OK) {
-		fprintf(stderr, "MobiFlight: Error on creating Client Data Area. %u", hr);
+		fprintf(stderr, "MobiFlight: Error on creating Client Data Area. %lu", hr);
 		return;
 	}
 	SimConnect_CreateClientData(g_hSimConnect, client->DataAreaIDResponse, MOBIFLIGHT_MESSAGE_SIZE, SIMCONNECT_CREATE_CLIENT_DATA_FLAG_DEFAULT);
 
 	hr = SimConnect_MapClientDataNameToID(g_hSimConnect, client->DataAreaNameCommand.c_str(), client->DataAreaIDCommand);
 	if (hr != S_OK) {
-		fprintf(stderr, "MobiFlight: Error on creating Client Data Area. %u", hr);
+		fprintf(stderr, "MobiFlight: Error on creating Client Data Area. %lu", hr);
 		return;
 	}
 	SimConnect_CreateClientData(g_hSimConnect, client->DataAreaIDCommand, MOBIFLIGHT_MESSAGE_SIZE, SIMCONNECT_CREATE_CLIENT_DATA_FLAG_DEFAULT);
 
-	hr = SimConnect_MapClientDataNameToID(g_hSimConnect, client->DataAreaNameStringVar.c_str(), client->DataAreaIDStringvar);
+	hr = SimConnect_MapClientDataNameToID(g_hSimConnect, client->DataAreaNameStringVar.c_str(), client->DataAreaIDStringSimVar);
 	if (hr != S_OK) {
-		fprintf(stderr, "MobiFlight: Error on creating Client Data Area. %u", hr);
+		fprintf(stderr, "MobiFlight: Error on creating Client Data Area. %lu", hr);
 		return;
 	}
-	SimConnect_CreateClientData(g_hSimConnect, client->DataAreaIDStringvar, MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN, SIMCONNECT_CREATE_CLIENT_DATA_FLAG_DEFAULT);
+	SimConnect_CreateClientData(g_hSimConnect, client->DataAreaIDStringSimVar, SIMCONNECT_CLIENTDATA_MAX_SIZE, SIMCONNECT_CREATE_CLIENT_DATA_FLAG_DEFAULT);
 
 	DWORD dataAreaOffset = 0;
 	hr = SimConnect_AddToClientDataDefinition(
@@ -457,10 +522,10 @@ Client* RegisterNewClient(const std::string clientName) {
 		newClient = new Client();
 		newClient->Name = clientName;
 		newClient->ID = RegisteredClients.size();
-		newClient->DataAreaIDSimvar = 3 * newClient->ID;
+		newClient->DataAreaIDSimvar = 4 * newClient->ID;
 		newClient->DataAreaIDCommand = newClient->DataAreaIDSimvar + 1;
 		newClient->DataAreaIDResponse = newClient->DataAreaIDCommand + 1;
-		newClient->DataAreaIDStringvar = newClient->DataAreaIDResponse + 1;
+		newClient->DataAreaIDStringSimVar = newClient->DataAreaIDResponse + 1;
 		newClient->DataAreaNameSimVar = newClient->Name + std::string(CLIENT_DATA_NAME_POSTFIX_SIMVAR);
 		newClient->DataAreaNameResponse = newClient->Name + std::string(CLIENT_DATA_NAME_POSTFIX_RESPONSE);
 		newClient->DataAreaNameCommand = newClient->Name + std::string(CLIENT_DATA_NAME_POSTFIX_COMMAND);
@@ -468,10 +533,11 @@ Client* RegisterNewClient(const std::string clientName) {
 		newClient->DataDefinitionIDStringResponse = 2 * newClient->ID; // 500 Clients possible until offset 1000 is reached
 		newClient->DataDefinitionIDStringCommand = newClient->DataDefinitionIDStringResponse + 1;
 		newClient->SimVars = std::vector<SimVar>();
+		newClient->StringSimVars = std::vector<StringSimVar>();
 		//newClient->RollingClientDataReadIndex = newClient->SimVars.begin();
 		newClient->RollingClientDataReadIndex = 0;
-		newClient->DataDefinitionIdSimVarsStart = SimVarOffset + (newClient->ID * (ClientDataDefinitionIdSimVarsRange + ClientDataDefinitionIdStringVarsRange));
-		newClient->DataDefinitionIdStringVarsStart = newClient->DataDefinitionIdSimVarsStart + ClientDataDefinitionIdSimVarsRange;
+		newClient->DataDefinitionIdSimVarsStart = SIMVAR_OFFSET + (newClient->ID * (CLIENT_DATA_DEF_ID_SIMVAR_RANGE + CLIENT_DATA_DEF_ID_STRINGVAR_RANGE));
+		newClient->DataDefinitionIdStringVarsStart = newClient->DataDefinitionIdSimVarsStart + CLIENT_DATA_DEF_ID_SIMVAR_RANGE;
 
 		RegisteredClients.push_back(newClient);
 
@@ -485,19 +551,22 @@ Client* RegisterNewClient(const std::string clientName) {
 		std::cout << "MobiFlight: NewClient DataAreaIDSimvar: " << newClient->DataAreaIDSimvar << std::endl;
 		std::cout << "MobiFlight: NewClient DataAreaIDResponse: " << newClient->DataAreaIDResponse << std::endl;
 		std::cout << "MobiFlight: NewClient DataAreaIDCommand: " << newClient->DataAreaIDCommand << std::endl;
+		std::cout << "MobiFlight: NewClient DataAreaIDStringSimVar: " << newClient->DataAreaIDStringSimVar << std::endl;
 		std::cout << "MobiFlight: NewClient DataAreaNameSimVar: " << newClient->DataAreaNameSimVar.c_str() << std::endl;
 		std::cout << "MobiFlight: NewClient DataAreaNameResponse: " << newClient->DataAreaNameResponse.c_str() << std::endl;
 		std::cout << "MobiFlight: NewClient DataAreaNameCommand: " << newClient->DataAreaNameCommand.c_str() << std::endl;
+		std::cout << "MobiFlight: NewClient DataAreaNameStringVar: " << newClient->DataAreaNameStringVar.c_str() << std::endl;
 		std::cout << "MobiFlight: NewClient DataDefinitionIDStringResponse: " << newClient->DataDefinitionIDStringResponse << std::endl;
 		std::cout << "MobiFlight: NewClient DataDefinitionIDStringCommand: " << newClient->DataDefinitionIDStringCommand << std::endl;
 		std::cout << "MobiFlight: NewClient DataDefinitionIdSimVarsStart: " << newClient->DataDefinitionIdSimVarsStart << std::endl;
+		std::cout << "MobiFlight: NewClient DataDefinitionIdStringVarsStart: " << newClient->DataDefinitionIdStringVarsStart << std::endl;
 #endif
 
 	return newClient;
 }
 
 extern "C" MSFS_CALLBACK void module_init(void)
-{	
+{
 	g_hSimConnect = 0;
 	HRESULT hr = SimConnect_Open(&g_hSimConnect, ClientName, (HWND) NULL, 0, 0, 0);
 	if (hr != S_OK)
@@ -505,7 +574,7 @@ extern "C" MSFS_CALLBACK void module_init(void)
 		fprintf(stderr, "Could not open SimConnect connection.\n");
 		return;
 	}
-	
+
 	hr = SimConnect_SubscribeToSystemEvent(g_hSimConnect, EVENT_FLIGHT_LOADED, "FlightLoaded");
 	if (hr != S_OK)
 	{
@@ -533,9 +602,9 @@ extern "C" MSFS_CALLBACK void module_init(void)
 	Client* client = RegisterNewClient(std::string(MOBIFLIGHT_CLIENT_DATA_NAME));
 	RegisterEvents();
 	ListLVars(client);
-	
+
 	std::cout << "MobiFlight: Max Message size is " << MOBIFLIGHT_MESSAGE_SIZE << std::endl;
-	std::cout << "MobiFlight: Module Init Complete.Version: " << version << std::endl;	
+	std::cout << "MobiFlight: Module Init Complete.Version: " << version << std::endl;
 }
 
 extern "C" MSFS_CALLBACK void module_deinit(void)
@@ -557,6 +626,7 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
 		case SIMCONNECT_RECV_ID_EVENT_FILENAME: {
 			SIMCONNECT_RECV_EVENT_FILENAME* evt = (SIMCONNECT_RECV_EVENT_FILENAME*)pData;
 			int eventID = evt->uEventID;
+			(void)eventID;
 			break;
 		}
 
@@ -568,18 +638,18 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
 				std::cout << "MobiFlight: Received Command: " << str.c_str() << std::endl;
 				std::cout << "MobiFlight: Received ClientId: " << clientID << std::endl;
 #endif
-			
+
 			Client* client = RegisteredClients[clientID];
 			if (str == "MF.Ping") {
 				SendResponse("MF.Pong", client);
-				std::cout << "MobiFlight[" << client->Name.c_str() << "]: Received ping" << std::endl;			
+				std::cout << "MobiFlight[" << client->Name.c_str() << "]: Received ping" << std::endl;
 			}
 
 			else if (str == "MF.SimVars.Clear") {
 				ClearSimVars(client);
 				break;
 
-			} 
+			}
 			else if (str == "MF.LVars.List") {
 				SendResponse("MF.LVars.List.Start", client);
 				ListLVars(client);
@@ -591,7 +661,7 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
 			{
 				std::string v = "MF.Version." + std::string(version);
 				SendResponse(v.c_str(), client);
-				std::cout << "MobiFlight[" << client->Name.c_str() << "]: Received get version" << std::endl;			
+				std::cout << "MobiFlight[" << client->Name.c_str() << "]: Received get version" << std::endl;
 				break;
 
 			}
@@ -600,19 +670,27 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
 				std::string prefix = "MF.SimVars.Set.";
 				str = str.substr(prefix.length());
 #if _DEBUG
-				std::cout << "MobiFlight[" << client->Name.c_str() << "]: Executing Code: " << str.c_str() << std::endl;				
+				std::cout << "MobiFlight[" << client->Name.c_str() << "]: Executing Code: " << str.c_str() << std::endl;
 #endif
 				execute_calculator_code(str.c_str(), 0, nullptr, nullptr);
 				break;
 			}
-		
+
 			std::shared_ptr<std::string> m_str = std::make_shared<std::string>(str);
-			
+
 			if (m_str.get()->find("MF.SimVars.Add.") != std::string::npos) {
 				std::string prefix = "MF.SimVars.Add.";
 				str = m_str.get()->substr(prefix.length());
-				RegisterSimVar(str, client);
-				std::cout << "MobiFlight[" << client->Name.c_str() << "]: Received SimVar to register: " << str.c_str() << std::endl;				
+				RegisterSimVar(str, client, false);
+				std::cout << "MobiFlight[" << client->Name.c_str() << "]: Received SimVar to register: " << str.c_str() << std::endl;
+				break;
+			}
+
+			if (m_str.get()->find("MF.SimVars.AddString.") != std::string::npos) {
+				std::string prefix = "MF.SimVars.AddString.";
+				str = m_str.get()->substr(prefix.length());
+				RegisterSimVar(str, client, true);
+				std::cout << "MobiFlight[" << client->Name.c_str() << "]: Received StringSimVar to register: " << str.c_str() << std::endl;
 				break;
 			}
 
@@ -621,7 +699,7 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
 				str= m_str.get()->substr(prefix.length());
 				Client* newClient = RegisterNewClient(str);
 				SendNewClientResponse(client, newClient);
-				std::cout << "MobiFlight[" << client->Name.c_str() << "]: Received Client to register: " << str.c_str() << std::endl;				
+				std::cout << "MobiFlight[" << client->Name.c_str() << "]: Received Client to register: " << str.c_str() << std::endl;
 			}
 
 			if (m_str.get()->find("MF.Config.MAX_VARS_PER_FRAME.Set.") != std::string::npos) {
@@ -629,7 +707,7 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
 				str = m_str.get()->substr(prefix.length());
 				uint16_t value = static_cast<uint16_t>(std::stoi(str));
 				MOBIFLIGHT_MAX_VARS_PER_FRAME = value;
-				std::cout << "MobiFlight: Set MF.Config.MAX_VARS_PER_FRAME to " << value << std::endl;				
+				std::cout << "MobiFlight: Set MF.Config.MAX_VARS_PER_FRAME to " << value << std::endl;
 			}
 			break;
 		}
@@ -637,7 +715,7 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
 		case SIMCONNECT_RECV_ID_EVENT_FRAME: {
 			SIMCONNECT_RECV_EVENT* evt = (SIMCONNECT_RECV_EVENT*)pData;
 			int eventID = evt->uEventID;
-
+			(void)eventID;
 			ReadSimVars();
 			break;
 		}
@@ -651,14 +729,14 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
 				int CodeEventId = eventID;
 				std::string command = std::string(CodeEvents[CodeEventId].second);
 #if _DEBUG
-				std::cout << "MobiFlight execute " << command.c_str() << std::endl;				
+				std::cout << "MobiFlight execute " << command.c_str() << std::endl;
 #endif
 				execute_calculator_code(command.c_str(), nullptr, nullptr, nullptr);
-			} 
+			}
 			else {
 				fprintf(stderr, "MobiFlight: OOF! - EventID out of range:%u\n", eventID);
 			}
-		
+
 			break;
 		}
 		default:
