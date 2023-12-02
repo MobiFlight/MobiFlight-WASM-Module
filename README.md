@@ -21,22 +21,26 @@ The default channels for the MobiFlight client are auto created on startup. Each
 
 #### Communication protocol
 
-| Command (string)| Responses (string) | LVars offset (float) |
+| Command (string)| Responses (string) | LVars value (float/string) |
 | ----------- | ----------- | ---------|
 | ```MF.Ping```| ```MF.Pong```|
 | ```MF.LVars.List``` | ```MF.LVars.List.Start``` <br> ```A32NX_AUTOPILOT_1_ACTIVE``` <br> ```A32NX_AUTOPILOT_HEADING_SELECTED``` <br> ```...``` <br> ```MF.LVars.List.End```|
-| ```MF.SimVars.Add.(A:GROUND ALTITUDE,Meters)``` || ```1455.23``` |
-|```MF.SimVars.Clear``` |||
-|```MF.SimVars.Set.5 (>L:MyVar)```|||
-|```MF.Clients.Add.ClientName```|```MF.Clients.Add.ClientName.Finished```||
-|```MF.Config.MAX_VARS_PER_FRAME.Set.30```|||
-|```MF.Version.Get```|```MF.Version.0.6.0```||
+| ```MF.SimVars.Add.(A:GROUND ALTITUDE,Meters)``` || ```e.g. 1455.23 (float)``` |
+| ```MF.SimVars.AddString.(A:GPS WP NEXT ID,String)``` || ```e.g. EDDS (string)``` |
+| ```MF.SimVars.Clear``` |||
+| ```MF.SimVars.Set.5 (>L:MyVar)```|||
+| ```MF.Clients.Add.ClientName```|```MF.Clients.Add.ClientName.Finished```||
+| ```MF.Config.MAX_VARS_PER_FRAME.Set.30```|||
+| ```MF.Version.Get```|```MF.Version.0.6.0```||
 
 
 **MF.SimVars.Add.**
-The "SimVars.Add." command needs to be extended with a gauge calculator scipt for reading a variable, like shown in the table. Each added variable needs 4 reserved bytes to return its float value in the LVars channel. The bytes are  allocated in the order of the LVars being added. The first variable starts at offset 0, the second at offset 4, the third at offset 8 and so on. To access each value, the external SimConnect clients needs a unique DataDefinitionId for each memory segment. It is recommended to start with ID 1000. 
+The "SimVars.Add." command needs to be extended with a gauge calculator script for reading a variable, like shown in the table. Each added variable needs 4 reserved bytes to return its float value in the LVars channel. The bytes are  allocated in the order of the LVars being added. The first variable starts at offset 0, the second at offset 4, the third at offset 8 and so on. To access each value, the external SimConnect clients needs a unique DataDefinitionId for each memory segment. It is recommended to start with ID 1000. 
 
 ![Lvars channels](doc/lvarsChannel.png)
+
+**MF.SimVars.AddString.**
+The "SimVars.AddString." command works similar to the "SimVars.Add." command but the string result of the gauge calculator script is used. The size of a single string can be up to 128 bytes, which allows handling a total of 64 string variables. The first variable starts at offset 0, the second at offset 128, the third at offset 256 and so on. To access each value, the external SimConnect clients needs a unique DataDefinitionId for each memory segment. It is recommended to start with ID 10000.
 
 **MF.Clients.Add.**
 The default channels are reserved for communication with the MobiFlight client. But they can be used to request additional channels for other SimConnect clients as well. If another client wants to use the WASM module for variable access, it can register itself with the command ```MF.Clients.Add.MyClientName``` using the default command channel. The WASM module then creates the new shared memory channels "MyClientName.LVars", "MyClientName.Command", "MyClientName.Response" and informs the client with ```MF.Clients.Add.ClientName.Finished```.
