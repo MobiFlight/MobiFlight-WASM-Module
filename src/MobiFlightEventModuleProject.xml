@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Project Version="2" Name="MobiFlightEventModuleProject" FolderName="Packages" MetadataFolderName="PackagesMetadata">
+<Project Version="2" Name="MobiFlightEventModuleProject" FolderName="Packages" PublishingGroupFolderName="PublishingGroupsContent" MetadataFolderName="PackagesMetadata" PublishingGroupMetadataFolderName="PublishingGroupsMetadata">
 	<OutputDirectory>.</OutputDirectory>
 	<TemporaryOutputDirectory>_PackageInt</TemporaryOutputDirectory>
+	<PublishingGroupTemporaryOutputDirectory>_PublishingGroupInt</PublishingGroupTemporaryOutputDirectory>
 	<Packages>
 		<Package>PackageDefinitions\mobiflight-event-module.xml</Package>
 	</Packages>
+	<PublishingGroups/>
 </Project>
 
