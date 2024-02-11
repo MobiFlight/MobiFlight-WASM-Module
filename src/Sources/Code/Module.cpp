@@ -11,7 +11,7 @@
 #include "Module.h"
 
 HANDLE g_hSimConnect;
-const char* version = "1.0.0";
+const char* version = "1.0.1";
 
 const char* ClientName = "MobiFlightWasmModule";
 const char* MobiFlightEventPrefix = "MobiFlight.";
@@ -376,8 +376,22 @@ void RegisterStringSimVar(const std::string code, Client* client) {
 
 // Clear the list of currently tracked SimVars
 void ClearSimVars(Client* client) {
+	// We have to clear out the respective DataAreas
+	// of the SimVars and StringSimVars 
+	// so that SimConnect sends data next time the 
+	// WASM module is running again.
+	for (auto& simVar : client->SimVars) {
+		simVar.Value = 0;
+		WriteSimVar(simVar, client);
+	}
 	client->SimVars.clear();
+
+	for (auto& simVar : client->StringSimVars) {
+		simVar.Value = "";
+		WriteSimVar(simVar, client);
+	}
 	client->StringSimVars.clear();
+
 	std::cout << "MobiFlight[" << client->Name.c_str() << "]: Cleared SimVar tracking." << std::endl;
 	//client->RollingClientDataReadIndex = client->SimVars.begin();
 	client->RollingClientDataReadIndex = 0;
