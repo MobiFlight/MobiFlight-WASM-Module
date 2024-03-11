@@ -284,12 +284,27 @@ void WriteSimVar(SimVar& simVar, Client* client) {
 #endif
 }
 
+//check whether SimVar has already registered in SimVar list
+bool IsDuplicatedSimVar(const std::string code, Client* client) {
+	for (auto& simVar : client->SimVars) {
+		if (simVar.Name == code) {
+			return true;
+		}
+	}
+	return false;
+}
+
 // Register a single Float-SimVar and send the current value to SimConnect Clients
 void RegisterFloatSimVar(const std::string code, Client* client) {
 	std::vector<SimVar>* SimVars = &(client->SimVars);
 	std::vector<StringSimVar>* StringSimVars = &(client->StringSimVars);
 	SimVar newSimVar;
 	HRESULT hr;
+
+	//duplicated SimVar, we do nothing
+	if(IsDuplicatedSimVar(code, client)) {
+		return;
+	}
 
 	newSimVar.Name = code;
 	newSimVar.ID = SimVars->size() + client->DataDefinitionIdSimVarsStart;
@@ -335,6 +350,11 @@ void RegisterStringSimVar(const std::string code, Client* client) {
 	std::vector<StringSimVar>* StringSimVars = &(client->StringSimVars);
 	StringSimVar newStringSimVar;
 	HRESULT hr;
+
+	//duplicated SimVar, we do nothing
+	if(IsDuplicatedSimVar(code, client)) {
+		return;
+	}
 
 	newStringSimVar.Name = code;
 	newStringSimVar.ID = StringSimVars->size() + client->DataDefinitionIdStringVarsStart;
