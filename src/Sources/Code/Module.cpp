@@ -285,8 +285,18 @@ void WriteSimVar(SimVar& simVar, Client* client) {
 }
 
 //check whether SimVar has already registered in SimVar list
-bool IsDuplicatedSimVar(const std::string code, Client* client) {
+bool IsDuplicatedFloatSimVar(const std::string code, Client* client) {
 	for (auto& simVar : client->SimVars) {
+		if (simVar.Name == code) {
+			return true;
+		}
+	}
+	return false;
+}
+
+//check whether SimVar has already registered in StringSimVars list
+bool IsDuplicatedStringSimVar(const std::string code, Client* client) {
+	for (auto& simVar : client->StringSimVars) {
 		if (simVar.Name == code) {
 			return true;
 		}
@@ -302,7 +312,7 @@ void RegisterFloatSimVar(const std::string code, Client* client) {
 	HRESULT hr;
 
 	//duplicated SimVar, we do nothing
-	if(IsDuplicatedSimVar(code, client)) {
+	if(IsDuplicatedFloatSimVar(code, client)) {
 		return;
 	}
 
@@ -351,8 +361,8 @@ void RegisterStringSimVar(const std::string code, Client* client) {
 	StringSimVar newStringSimVar;
 	HRESULT hr;
 
-	//duplicated SimVar, we do nothing
-	if(IsDuplicatedSimVar(code, client)) {
+	//duplicated StringSimVars, we do nothing
+	if(IsDuplicatedStringSimVar(code, client)) {
 		return;
 	}
 
