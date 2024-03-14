@@ -44,12 +44,16 @@ uint16_t MOBIFLIGHT_MAX_VARS_PER_FRAME = 30;
 // due to the maximum client-data-array-size (SIMCONNECT_CLIENTDATA_MAX_SIZE) of 8kB!
 constexpr uint16_t MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN = 128;
 
+//declare struct Client
+struct Client;
+
 // data struct for dynamically registered SimVars
 struct SimVar {
 	int ID;
 	int Offset;
 	std::string Name;
 	float Value;
+	struct Client * clint;
 };
 
 struct StringSimVar {
@@ -57,6 +61,7 @@ struct StringSimVar {
 	int Offset;
 	std::string Name;
 	std::string Value;
+	struct Client * clint;
 };
 
 // data struct for client accessing SimVars
@@ -86,6 +91,18 @@ struct Client {
 	uint16_t RollingClientDataReadIndex;
 
 };
+
+//RPN code execution for reading values in every frame
+struct ReadRPNCode {
+	std::string Code;
+	//RetType: 0:float 1:integer 2:string
+	int RetType;
+	std::vector<SimVar> SimVars;
+	std::vector<StringSimVar> StringSimVars;
+};
+
+std::vector<ReadRPNCode> RPNCodelist;
+
 
 // The list of currently registered clients
 std::vector<Client*> RegisteredClients;
@@ -284,18 +301,41 @@ void WriteSimVar(SimVar& simVar, Client* client) {
 #endif
 }
 
+//check whether SimVar has already registered in SimVar list
+ReadRPNCode* IsDuplicatedSimVar(const std::string code) {
+	for (auto &rpn : RPNCodelist) {
+		if (rpn.Code == code) {
+			return &rpn;
+		}
+	}
+	return nullptr;
+}
+
 // Register a single Float-SimVar and send the current value to SimConnect Clients
 void RegisterFloatSimVar(const std::string code, Client* client) {
 	std::vector<SimVar>* SimVars = &(client->SimVars);
 	std::vector<StringSimVar>* StringSimVars = &(client->StringSimVars);
 	SimVar newSimVar;
+	ReadRPNCode* pdupRpn = IsDuplicatedSimVar(code);
 	HRESULT hr;
 
 	newSimVar.Name = code;
 	newSimVar.ID = SimVars->size() + client->DataDefinitionIdSimVarsStart;
 	newSimVar.Offset = SimVars->size() * (sizeof(float));
 	newSimVar.Value = 0.0F;
+	newSimVar.clint = client;
 	SimVars->push_back(newSimVar);
+
+	//duplicated SimVar
+	if (pdupRpn) {
+		pdupRpn->SimVars.push_back(newSimVar);
+	} else {
+		ReadRPNCode rpnCode;
+		rpnCode.Code = code;
+		rpnCode.RetType = 0;//hardcoded type id
+		rpnCode.SimVars.push_back(newSimVar);
+		RPNCodelist.push_back(rpnCode);
+	}
 
 	if (client->MaxClientDataDefinition < (SimVars->size() + StringSimVars->size())) {
 		hr = SimConnect_AddToClientDataDefinition(
@@ -340,6 +380,7 @@ void RegisterStringSimVar(const std::string code, Client* client) {
 	newStringSimVar.ID = StringSimVars->size() + client->DataDefinitionIdStringVarsStart;
 	newStringSimVar.Offset = StringSimVars->size() * MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN;
 	newStringSimVar.Value.empty();
+	newStringSimVar.clint = client;
 	StringSimVars->push_back(newStringSimVar);
 
 	if (client->MaxClientDataDefinition < (SimVars->size() + StringSimVars->size())) {
