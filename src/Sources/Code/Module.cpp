@@ -87,7 +87,7 @@ struct Client {
 };
 
 // Runtime Rolling CLient Data reading Index
-uint16_t RollingClientDataReadIndex = 0;
+uint16_t RollingDataReadIndex = 0;
 
 //RPN code execution for reading values in every frame
 struct ReadRPNCode {
@@ -441,8 +441,8 @@ void ClearSimVars(Client* client) {
 	client->StringSimVars.clear();
 
 	std::cout << "MobiFlight[" << client->Name.c_str() << "]: Cleared SimVar tracking." << std::endl;
-	//client->RollingClientDataReadIndex = client->SimVars.begin();
-	RollingClientDataReadIndex = 0;
+	//client->RollingDataReadIndex = client->SimVars.begin();
+	RollingDataReadIndex = 0;
 }
 
 
@@ -500,11 +500,11 @@ void ReadSimVars() {
 	int maxVarsPerFrame = (totalSimVars < MOBIFLIGHT_MAX_VARS_PER_FRAME) ? totalSimVars : MOBIFLIGHT_MAX_VARS_PER_FRAME;
 
 	for (int i=0; i < maxVarsPerFrame; ++i) {
-		ReadSimVar(RPNCodelist.at(RollingClientDataReadIndex));
+		ReadSimVar(RPNCodelist.at(RollingDataReadIndex));
 
-		RollingClientDataReadIndex++;
-		if (RollingClientDataReadIndex >= totalSimVars)
-			RollingClientDataReadIndex = 0;
+		RollingDataReadIndex++;
+		if (RollingDataReadIndex >= totalSimVars)
+			RollingDataReadIndex = 0;
 	}
 }
 
@@ -598,7 +598,7 @@ Client* RegisterNewClient(const std::string clientName) {
 		newClient->DataDefinitionIDStringCommand = newClient->DataDefinitionIDStringResponse + 1;
 		newClient->SimVars = std::vector<SimVar>();
 		newClient->StringSimVars = std::vector<StringSimVar>();
-		RollingClientDataReadIndex = 0;
+		RollingDataReadIndex = 0;
 		newClient->DataDefinitionIdSimVarsStart = SIMVAR_OFFSET + (newClient->ID * (CLIENT_DATA_DEF_ID_SIMVAR_RANGE + CLIENT_DATA_DEF_ID_STRINGVAR_RANGE));
 		newClient->DataDefinitionIdStringVarsStart = newClient->DataDefinitionIdSimVarsStart + CLIENT_DATA_DEF_ID_SIMVAR_RANGE;
 
