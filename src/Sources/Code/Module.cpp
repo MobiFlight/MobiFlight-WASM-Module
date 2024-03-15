@@ -44,19 +44,22 @@ uint16_t MOBIFLIGHT_MAX_VARS_PER_FRAME = 30;
 // due to the maximum client-data-array-size (SIMCONNECT_CLIENTDATA_MAX_SIZE) of 8kB!
 constexpr uint16_t MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN = 128;
 
+//declare struct Client
+struct Client;
+
 // data struct for dynamically registered SimVars
 struct SimVar {
 	int ID;
 	int Offset;
-	std::string Name;
 	float Value;
+	struct Client * clint;
 };
 
 struct StringSimVar {
 	int ID;
 	int Offset;
-	std::string Name;
 	std::string Value;
+	struct Client * clint;
 };
 
 // data struct for client accessing SimVars
@@ -81,11 +84,22 @@ struct Client {
 	// This is an optimization to be able to re-use already defined data definition IDs & request IDs
 	// after resetting registered SimVars
 	uint16_t MaxClientDataDefinition = 0;
-	// Runtime Rolling CLient Data reading Index
-	//std::vector<SimVar>::iterator RollingClientDataReadIndex;
-	uint16_t RollingClientDataReadIndex;
-
 };
+
+// Runtime Rolling CLient Data reading Index
+uint16_t RollingDataReadIndex = 0;
+
+//RPN code execution for reading values in every frame
+struct ReadRPNCode {
+	std::string Code;
+	//RetType: 0:float 1:integer 2:string
+	int RetType;
+	std::vector<SimVar> SimVars;
+	std::vector<StringSimVar> StringSimVars;
+};
+
+std::vector<ReadRPNCode> RPNCodelist;
+
 
 // The list of currently registered clients
 std::vector<Client*> RegisteredClients;
@@ -255,10 +269,10 @@ void WriteSimVar(StringSimVar& simVar, Client* client)
 	);
 
 	if (hr != S_OK) {
-		fprintf(stderr, "MobiFlight[%s]: Error on Setting String Client Data. %lu, SimVar: %s (String-ID: %ul)\n", client->Name.c_str(), hr, simVar.Name.c_str(), simVar.ID);
+		fprintf(stderr, "MobiFlight[%s]: Error on Setting String Client Data. %lu, SimVar: (String-ID: %ul)\n", client->Name.c_str(), hr, simVar.ID);
 	}
 #if _DEBUG
-	std::cout << "MobiFlight[" << client->Name.c_str() << "]: Written String-SimVar " << simVar.Name.c_str();
+	std::cout << "MobiFlight[" << client->Name.c_str() << "]: Written String-SimVar";
 	std::cout << " with String-ID " << simVar.ID << " has value " << simVar.Value.c_str() << std::endl;
 #endif
 }
@@ -276,12 +290,22 @@ void WriteSimVar(SimVar& simVar, Client* client) {
 	);
 
 		if (hr != S_OK) {
-			fprintf(stderr, "MobiFlight[%s]: Error on Setting Client Data. %lu, SimVar: %s (ID: %u)", client->Name.c_str(), hr, simVar.Name.c_str(), simVar.ID);
+			fprintf(stderr, "MobiFlight[%s]: Error on Setting Client Data. %lu, SimVar: (ID: %u)", client->Name.c_str(), hr, simVar.ID);
 		}
 #if _DEBUG
-	std::cout << "MobiFlight[" << client->Name.c_str() << "]: Written SimVar " << simVar.Name.c_str();
+	std::cout << "MobiFlight[" << client->Name.c_str() << "]: Written SimVar";
 	std::cout << " with ID " << simVar.ID << " has value " << simVar.Value << std::endl;
 #endif
+}
+
+//check whether SimVar has already registered in SimVar list
+ReadRPNCode* IsDuplicatedSimVar(const std::string code) {
+	for (auto &rpn : RPNCodelist) {
+		if (rpn.Code == code) {
+			return &rpn;
+		}
+	}
+	return nullptr;
 }
 
 // Register a single Float-SimVar and send the current value to SimConnect Clients
@@ -289,13 +313,25 @@ void RegisterFloatSimVar(const std::string code, Client* client) {
 	std::vector<SimVar>* SimVars = &(client->SimVars);
 	std::vector<StringSimVar>* StringSimVars = &(client->StringSimVars);
 	SimVar newSimVar;
+	ReadRPNCode* pdupRpn = IsDuplicatedSimVar(code);
 	HRESULT hr;
 
-	newSimVar.Name = code;
 	newSimVar.ID = SimVars->size() + client->DataDefinitionIdSimVarsStart;
 	newSimVar.Offset = SimVars->size() * (sizeof(float));
 	newSimVar.Value = 0.0F;
+	newSimVar.clint = client;
 	SimVars->push_back(newSimVar);
+
+	//duplicated SimVar
+	if (pdupRpn) {
+		pdupRpn->SimVars.push_back(newSimVar);
+	} else {
+		ReadRPNCode rpnCode;
+		rpnCode.Code = code;
+		rpnCode.RetType = 0;//hardcoded type id
+		rpnCode.SimVars.push_back(newSimVar);
+		RPNCodelist.push_back(rpnCode);
+	}
 
 	if (client->MaxClientDataDefinition < (SimVars->size() + StringSimVars->size())) {
 		hr = SimConnect_AddToClientDataDefinition(
@@ -307,11 +343,11 @@ void RegisterFloatSimVar(const std::string code, Client* client) {
 		);
 
 		if (hr != S_OK) {
-			fprintf(stderr, "MobiFlight[%s]: Error on adding Client Data \"%s\" with ID: %u, Offset: %u and Size: %lu\n", client->Name.c_str(), newSimVar.Name.c_str(), newSimVar.ID, newSimVar.Offset, sizeof(float));
+			fprintf(stderr, "MobiFlight[%s]: Error on adding Client Data \"%s\" with ID: %u, Offset: %u and Size: %lu\n", client->Name.c_str(), code.c_str(), newSimVar.ID, newSimVar.Offset, sizeof(float));
 		}
 #if _DEBUG
 		else {
-			std::cout << "MobiFlight[" << client->Name.c_str() << "]: Added SimVar > " << newSimVar.Name.c_str();
+			std::cout << "MobiFlight[" << client->Name.c_str() << "]: Added SimVar > " << code.c_str();
 			std::cout << " with ID: " << newSimVar.ID << ", Offset: " << newSimVar.Offset << " and Size: " << sizeof(float) << std::endl;
 		}
 		std::cout << "MobiFlight[" << client->Name.c_str() << "]: RegisterFloatSimVar SimVars Size: " << SimVars->size() << std::endl;
@@ -324,7 +360,7 @@ void RegisterFloatSimVar(const std::string code, Client* client) {
 	newSimVar.Value = floatVal;
 	WriteSimVar(newSimVar, client);
 #if _DEBUG
-	std::cout << "MobiFlight[" << client->Name.c_str() << "]: RegisterFloatSimVar > " << newSimVar.Name.c_str();
+	std::cout << "MobiFlight[" << client->Name.c_str() << "]: RegisterFloatSimVar > " << code.c_str();
 	std::cout << " ID [" << newSimVar.ID << "] : Offset(" << newSimVar.Offset << ") : Value(" << newSimVar.Value << ")"  << std::endl;
 #endif
 }
@@ -334,13 +370,25 @@ void RegisterStringSimVar(const std::string code, Client* client) {
 	std::vector<SimVar>* SimVars = &(client->SimVars);
 	std::vector<StringSimVar>* StringSimVars = &(client->StringSimVars);
 	StringSimVar newStringSimVar;
+	ReadRPNCode* pdupRpn = IsDuplicatedSimVar(code);
 	HRESULT hr;
 
-	newStringSimVar.Name = code;
 	newStringSimVar.ID = StringSimVars->size() + client->DataDefinitionIdStringVarsStart;
 	newStringSimVar.Offset = StringSimVars->size() * MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN;
 	newStringSimVar.Value.empty();
+	newStringSimVar.clint = client;
 	StringSimVars->push_back(newStringSimVar);
+
+	//duplicated SimVar
+	if (pdupRpn) {
+		pdupRpn->StringSimVars.push_back(newStringSimVar);
+	} else {
+		ReadRPNCode rpnCode;
+		rpnCode.Code = code;
+		rpnCode.RetType = 2;//hardcoded type id
+		rpnCode.StringSimVars.push_back(newStringSimVar);
+		RPNCodelist.push_back(rpnCode);
+	}
 
 	if (client->MaxClientDataDefinition < (SimVars->size() + StringSimVars->size())) {
 		hr = SimConnect_AddToClientDataDefinition(
@@ -352,11 +400,11 @@ void RegisterStringSimVar(const std::string code, Client* client) {
 		);
 
 		if (hr != S_OK) {
-			fprintf(stderr, "MobiFlight[%s]: Error on adding Client Data \"%s\" with String-ID: %u, String-Offset: %u and Size: %u\n", client->Name.c_str(), newStringSimVar.Name.c_str(), newStringSimVar.ID, newStringSimVar.Offset, MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN);
+			fprintf(stderr, "MobiFlight[%s]: Error on adding Client Data \"%s\" with String-ID: %u, String-Offset: %u and Size: %u\n", client->Name.c_str(), code.c_str(), newStringSimVar.ID, newStringSimVar.Offset, MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN);
 		}
 #if _DEBUG
 		else {
-			std::cout << "MobiFlight[" << client->Name.c_str() << "]: Added String-SimVar > " << newStringSimVar.Name.c_str();
+			std::cout << "MobiFlight[" << client->Name.c_str() << "]: Added String-SimVar > " << code.c_str();
 			std::cout << " with String-ID: " << newStringSimVar.ID << ", String-Offset: " << newStringSimVar.Offset << " and Size: " << MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN << std::endl;
 		}
 		std::cout << "MobiFlight[" << client->Name.c_str() << "]: RegisterStringSimVar StringSimVars Size: " << StringSimVars->size() << std::endl;
@@ -369,7 +417,7 @@ void RegisterStringSimVar(const std::string code, Client* client) {
 	newStringSimVar.Value = std::string(charVal, strnlen(charVal, MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN));
 	WriteSimVar(newStringSimVar, client);
 #if _DEBUG
-	std::cout << "MobiFlight[" << client->Name.c_str() << "]: RegisterStringSimVar > " << newStringSimVar.Name.c_str();
+	std::cout << "MobiFlight[" << client->Name.c_str() << "]: RegisterStringSimVar > " << code.c_str();
 	std::cout << " ID [" << newStringSimVar.ID << "] : Offset(" << newStringSimVar.Offset << ") : Value(" << newStringSimVar.Value << ")"  << std::endl;
 #endif
 }
@@ -391,66 +439,99 @@ void ClearSimVars(Client* client) {
 		WriteSimVar(simVar, client);
 	}
 	client->StringSimVars.clear();
+	// clear RNP code list
+	for (std::vector<ReadRPNCode>::iterator rit = RPNCodelist.begin(); rit != RPNCodelist.end();) {
+		for (std::vector<StringSimVar>::iterator it = (*rit).StringSimVars.begin(); it != (*rit).StringSimVars.end();) {
+			if ((*it).clint == client) {
+				it = (*rit).StringSimVars.erase(it);
+			} else {
+				++it;
+			}
+		}
+		for (std::vector<SimVar>::iterator sit = (*rit).SimVars.begin(); sit != (*rit).SimVars.end();) {
+			if ((*sit).clint == client) {
+				sit = (*rit).SimVars.erase(sit);
+			} else {
+				++sit;
+			}
+		}
+		//remove empty RNP code
+		if ((*rit).StringSimVars.empty() && (*rit).SimVars.empty()) {
+			rit = RPNCodelist.erase(rit);
+		} else {
+			++rit;
+		}
+	}
 
 	std::cout << "MobiFlight[" << client->Name.c_str() << "]: Cleared SimVar tracking." << std::endl;
-	//client->RollingClientDataReadIndex = client->SimVars.begin();
-	client->RollingClientDataReadIndex = 0;
+	//client->RollingDataReadIndex = client->SimVars.begin();
+	RollingDataReadIndex = 0;
 }
 
+
 // Read a single SimVar and send the current value to SimConnect Clients (overloaded for float SimVars)
-void ReadSimVar(SimVar &simVar, Client* client) {
+void ReadSimVarFloat(ReadRPNCode &rpn) {
 	FLOAT64 floatVal = 0;
 
-	execute_calculator_code(std::string(simVar.Name).c_str(), &floatVal, nullptr, nullptr);
+	execute_calculator_code(std::string(rpn.Code).c_str(), &floatVal, nullptr, nullptr);
 
-	if (simVar.Value == floatVal) return;
-	simVar.Value = floatVal;
+	for (auto& simVar : rpn.SimVars) {
+		if ((simVar.Value > floatVal) && (simVar.Value - floatVal < 0.00001F)) {
+			continue;
+		} else if ((simVar.Value < floatVal) && (floatVal - simVar.Value  < 0.00001F)) {
+			continue;
+		}
+		simVar.Value = floatVal;
 
-	WriteSimVar(simVar, client);
+		WriteSimVar(simVar, simVar.clint);
 
 #if _DEBUG
-	std::cout << "MobiFlight[" << client->Name.c_str() << "]: SimVar " << simVar.Name.c_str();
-	std::cout << " with ID " << simVar.ID << " has value " << simVar.Value << std::endl;
+		std::cout << "MobiFlight[" << simVar.clint->Name.c_str() << "]: SimVar " << rpn.Code.c_str();
+		std::cout << " with ID " << simVar.ID << " has value " << simVar.Value << std::endl;
 #endif
+	}
 }
 
 // Read a single SimVar and send the current value to SimConnect Clients (overloaded for string SimVars)
-void ReadSimVar(StringSimVar &simVar, Client* client) {
+void ReadSimVarString(ReadRPNCode &rpn) {
 	PCSTRINGZ charVal = nullptr;
 
-	execute_calculator_code(std::string(simVar.Name).c_str(), nullptr, nullptr, &charVal);
+	execute_calculator_code(std::string(rpn.Code).c_str(), nullptr, nullptr, &charVal);
 	std::string stringVal = std::string(charVal, strnlen(charVal, MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN));
-	if (simVar.Value == stringVal) return;
-	simVar.Value = stringVal;
 
-	WriteSimVar(simVar, client);
+	for (auto& simVar : rpn.StringSimVars) {
+		if (simVar.Value == stringVal) continue;
+		simVar.Value = stringVal;
+
+		WriteSimVar(simVar, simVar.clint);
 
 #if _DEBUG
-	std::cout << "MobiFlight[" << client->Name.c_str() << "]: StringSimVar " << simVar.Name.c_str();
-	std::cout << " with ID " << simVar.ID << " has value " << simVar.Value << std::endl;
+		std::cout << "MobiFlight[" << simVar.clint->Name.c_str() << "]: StringSimVar " << rpn.Code.c_str();
+		std::cout << " with ID " << simVar.ID << " has value " << simVar.Value << std::endl;
 #endif
+	}
+}
+
+// Read a single SimVar and send the current value to SimConnect Clients (overloaded for float SimVars)
+void ReadSimVar(ReadRPNCode &rpn) {
+	if (rpn.RetType == 0) {
+		ReadSimVarFloat(rpn);
+	} else if (rpn.RetType == 2) {
+		ReadSimVarString(rpn);
+	}
 }
 
 // Read all dynamically registered SimVars
 void ReadSimVars() {
-	for (auto& client : RegisteredClients) {
-		std::vector<SimVar>* SimVars = &(client->SimVars);
-		std::vector<StringSimVar>* StringSimVars = &(client->StringSimVars);
+	int totalSimVars = RPNCodelist.size();
+	int maxVarsPerFrame = (totalSimVars < MOBIFLIGHT_MAX_VARS_PER_FRAME) ? totalSimVars : MOBIFLIGHT_MAX_VARS_PER_FRAME;
 
-		int totalSimVars = SimVars->size() + StringSimVars->size();
-		int maxVarsPerFrame = (totalSimVars < MOBIFLIGHT_MAX_VARS_PER_FRAME) ? totalSimVars : MOBIFLIGHT_MAX_VARS_PER_FRAME;
+	for (int i=0; i < maxVarsPerFrame; ++i) {
+		ReadSimVar(RPNCodelist.at(RollingDataReadIndex));
 
-		for (int i=0; i < maxVarsPerFrame; ++i) {
-			if(client->RollingClientDataReadIndex < SimVars->size() ) {
-				ReadSimVar(SimVars->at(client->RollingClientDataReadIndex), client);
-			}
-			else {
-				ReadSimVar(StringSimVars->at(client->RollingClientDataReadIndex - SimVars->size()), client);
-			}
-			client->RollingClientDataReadIndex++;
-			if (client->RollingClientDataReadIndex >= totalSimVars)
-				client->RollingClientDataReadIndex = 0;
-		}
+		RollingDataReadIndex++;
+		if (RollingDataReadIndex >= totalSimVars)
+			RollingDataReadIndex = 0;
 	}
 }
 
@@ -544,8 +625,7 @@ Client* RegisterNewClient(const std::string clientName) {
 		newClient->DataDefinitionIDStringCommand = newClient->DataDefinitionIDStringResponse + 1;
 		newClient->SimVars = std::vector<SimVar>();
 		newClient->StringSimVars = std::vector<StringSimVar>();
-		//newClient->RollingClientDataReadIndex = newClient->SimVars.begin();
-		newClient->RollingClientDataReadIndex = 0;
+		RollingDataReadIndex = 0;
 		newClient->DataDefinitionIdSimVarsStart = SIMVAR_OFFSET + (newClient->ID * (CLIENT_DATA_DEF_ID_SIMVAR_RANGE + CLIENT_DATA_DEF_ID_STRINGVAR_RANGE));
 		newClient->DataDefinitionIdStringVarsStart = newClient->DataDefinitionIdSimVarsStart + CLIENT_DATA_DEF_ID_SIMVAR_RANGE;
 
