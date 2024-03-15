@@ -476,7 +476,11 @@ void ReadSimVarFloat(ReadRPNCode &rpn) {
 	execute_calculator_code(std::string(rpn.Code).c_str(), &floatVal, nullptr, nullptr);
 
 	for (auto& simVar : rpn.SimVars) {
-		if (simVar.Value == floatVal) continue;
+		if ((simVar.Value > floatVal) && (simVar.Value - floatVal < 0.00001F)) {
+			continue;
+		} else if ((simVar.Value < floatVal) && (floatVal - simVar.Value  < 0.00001F)) {
+			continue;
+		}
 		simVar.Value = floatVal;
 
 		WriteSimVar(simVar, simVar.clint);
