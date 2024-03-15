@@ -439,6 +439,29 @@ void ClearSimVars(Client* client) {
 		WriteSimVar(simVar, client);
 	}
 	client->StringSimVars.clear();
+	// clear RNP code list
+	for (std::vector<ReadRPNCode>::iterator rit = RPNCodelist.begin(); rit != RPNCodelist.end();) {
+		for (std::vector<StringSimVar>::iterator it = (*rit).StringSimVars.begin(); it != (*rit).StringSimVars.end();) {
+			if ((*it).clint == client) {
+				it = (*rit).StringSimVars.erase(it);
+			} else {
+				++it;
+			}
+		}
+		for (std::vector<SimVar>::iterator sit = (*rit).SimVars.begin(); sit != (*rit).SimVars.end();) {
+			if ((*sit).clint == client) {
+				sit = (*rit).SimVars.erase(sit);
+			} else {
+				++sit;
+			}
+		}
+		//remove empty RNP code
+		if ((*rit).StringSimVars.empty() && (*rit).SimVars.empty()) {
+			rit = RPNCodelist.erase(rit);
+		} else {
+			++rit;
+		}
+	}
 
 	std::cout << "MobiFlight[" << client->Name.c_str() << "]: Cleared SimVar tracking." << std::endl;
 	//client->RollingDataReadIndex = client->SimVars.begin();
@@ -453,7 +476,7 @@ void ReadSimVarFloat(ReadRPNCode &rpn) {
 	execute_calculator_code(std::string(rpn.Code).c_str(), &floatVal, nullptr, nullptr);
 
 	for (auto& simVar : rpn.SimVars) {
-		if (simVar.Value == floatVal) return;
+		if (simVar.Value == floatVal) continue;
 		simVar.Value = floatVal;
 
 		WriteSimVar(simVar, simVar.clint);
@@ -473,7 +496,7 @@ void ReadSimVarString(ReadRPNCode &rpn) {
 	std::string stringVal = std::string(charVal, strnlen(charVal, MOBIFLIGHT_STRING_SIMVAR_VALUE_MAX_LEN));
 
 	for (auto& simVar : rpn.StringSimVars) {
-		if (simVar.Value == stringVal) return;
+		if (simVar.Value == stringVal) continue;
 		simVar.Value = stringVal;
 
 		WriteSimVar(simVar, simVar.clint);
